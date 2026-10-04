@@ -1,5 +1,5 @@
 """APP0 (sortie lisible) et APP1 (écran local) — hermétiques : tout se passe sous tmp_path, HOME jetable."""
-import io, json, os, re, sys, threading, urllib.error, urllib.request
+import io, json, os, re, shutil, sys, threading, urllib.error, urllib.request
 from pathlib import Path
 
 import pytest
@@ -67,7 +67,8 @@ def test_json_inchange_et_lisible_dans_un_terminal(tmp_path, maison, monkeypatch
 
 
 @pytest.mark.parametrize("argv", [["doctor"], ["doublons", "--racine", "JEU"], ["gros", "--top", "3"],
-                                  ["similaires", "JEU"], ["range", "JEU"]])
+                                  ["similaires", "JEU"],
+                                  pytest.param(["range", "JEU"], marks=pytest.mark.skipif(shutil.which("rclone") is None, reason="range exige rclone (moteur optionnel)"))])
 def test_aucune_commande_n_affiche_de_json_brut_dans_un_terminal(tmp_path, maison, monkeypatch, argv):
     racine = _jeu(tmp_path / "jeu")
     avant = _photo(racine)
