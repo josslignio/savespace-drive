@@ -27,6 +27,12 @@ def court(chemin):
     return "/".join(p[:1] + ("…",) + p[-2:]) if len(p) > 4 else chemin
 
 
+def nuage(k, octets=None):
+    ou = "dans iCloud (pas sur ce Mac)" if sys.platform == "darwin" else "dans le nuage (pas sur ce PC)"
+    poids = f" ({taille(octets)})" if octets else ""
+    return f"{n(k, 'fichier')}{poids} {'sont' if k > 1 else 'est'} seulement {ou} : {'ignorés' if k > 1 else 'ignoré'}, rien n'a été téléchargé."
+
+
 def analyse(r, limite=20):
     groupes = [g for g in r["doublons"] if g["taille"] > 0]
     l = [f"Taille totale du dossier : {taille(r['total_octets'])}.", ""]
@@ -46,7 +52,7 @@ def analyse(r, limite=20):
     if r["caches"]:
         l += ["", f"{n(len(r['caches']), 'fichier')} de cache ou de journal repérés."]
     if (nu := r.get("nuage_seulement", {})).get("fichiers"):
-        l += ["", f"{n(nu['fichiers'], 'fichier')} dans le nuage seulement ({taille(nu['octets'])}) : pas téléchargés, donc pas examinés."]
+        l += ["", nuage(nu["fichiers"], nu["octets"])]
     if r["proteges"]:
         l += ["", f"{n(len(r['proteges']), 'fichier')} sensibles (clés, .git) ignorés : on n'y touche jamais."]
     return "\n".join(l + ["", "Rien n'a été modifié : c'est seulement une analyse."])
@@ -61,6 +67,8 @@ def _doublons(d, argv):
         l += [f"    en trop : {court(c)}" for c in g["membres"] if c != g["conserve"]]
     if d["vides"]:
         l.append(f"{n(d['vides'], 'fichier')} vides ignorés.")
+    if d.get("nuage_seulement"):
+        l.append(nuage(d["nuage_seulement"]))
     return "\n".join(l + ["Rien n'a été déplacé : c'est seulement une liste."])
 
 

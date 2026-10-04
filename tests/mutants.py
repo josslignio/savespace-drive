@@ -1,34 +1,40 @@
-"""Le test du test : chaque garantie des drives a un mutant (le code qui la trahit) ; la suite doit devenir ROUGE.
+"""Le test du test : chaque garantie a un mutant (le code qui la trahit) ; la suite doit devenir ROUGE.
 Usage : python tests/mutants.py   — copie src/ et tests/ dans build/mutants/<n>/, applique UN changement, lance pytest.
 Témoin d'abord : la copie non mutée doit être verte. Un mutant qui reste vert = garantie décorative (code de sortie 1)."""
 import shutil, subprocess, sys
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
-D, A, C, DR = "analyse.py", "app.py", "chemins.py", "drives.py"
 MUTANTS = [  # (garantie, fichier, avant, après)
-    ("pas téléchargé : jamais ouvert (analyse)", D, "if dans_le_nuage(brut, st):", "if False:"),
-    ("pas téléchargé : jamais ouvert (doublons)", "doublons.py", "if dans_le_nuage(brut, st):", "if False:"),
-    ("pas téléchargé : drapeau macOS lu", C, "getattr(st, \"st_flags\", 0) & SF_DATALESS or ", ""),
-    ("pas téléchargé : revérifié avant de ranger", A, "if any(_au_nuage(", "if False and any(_au_nuage("),
-    ("iCloud Drive : seul coin de ~/Library ouvert", C, "if not r.is_relative_to(lib / \"Mobile Documents\" / \"com~apple~CloudDocs\"):", "if True:"),
-    ("drive : rien n'est téléchargé", DR, "fichiers, p = _liste(cle), _rclone(\"about\"",
+    ("nuage : jamais ouvert (analyse)", "analyse.py", "            if dans_le_nuage(st):", "            if False:"),
+    ("nuage : jamais ouvert (doublons)", "doublons.py", "if dans_le_nuage(st):  # pas sur ce disque : le lire le téléchargerait", "if False:"),
+    ("nuage : jamais ouvert (similaires)", "similaires.py", "if not dans_le_nuage(st := os.stat(chemin)):", "if (st := os.stat(chemin)):"),
+    ("nuage : jamais ouvert (caches)", "caches.py", "if dans_le_nuage(st := p.stat()): continue", "st = p.stat()"),
+    ("nuage : jamais ouvert (range)", "range.py", " and not dans_le_nuage(os.stat(os.path.join(cible, f)))", ""),
+    ("nuage : drapeau macOS lu", "chemins.py", "getattr(st, \"st_flags\", 0) & SF_DATALESS or ", ""),
+    ("nuage : attribut Windows lu", "chemins.py", " or getattr(st, \"st_file_attributes\", 0) & A_LA_DEMANDE", ""),
+    ("taille unique : jamais lue (analyse)", "analyse.py", "if tailles[taille] > 1 and not _protege(relatif)", "if not _protege(relatif)"),
+    ("taille unique : jamais lue (doublons)", "doublons.py", "for b, t in candidats if tailles[t] > 1]", "for b, t in candidats]"),
+    ("taille unique : jamais lue (similaires)", "similaires.py", "open(c, \"rb\").read() if tailles[t] > 1 else b\"\"", "open(c, \"rb\").read()"),
+    ("nuage : revérifié avant de ranger (app)", "app.py", "if any(_au_nuage(", "if False and any(_au_nuage("),
+    ("iCloud Drive : seul coin de ~/Library ouvert", "chemins.py", "if not r.is_relative_to(lib / \"Mobile Documents\" / \"com~apple~CloudDocs\"):", "if True:"),
+    ("drive : rien n'est téléchargé", "drives.py", "fichiers, p = _liste(cle), _rclone(\"about\"",
      "fichiers, p = _liste(cle), _rclone(\"hashsum\", \"md5\", \"--download\", f\"{cle}:\") and _rclone(\"about\""),
-    ("drive : doublons par l'empreinte du service", DR, "(f.get(\"Hashes\") or {}).get(h)", "f.get(\"Size\")"),
-    ("drive : rien ne part sans le oui", DR, "        return rep\n    if action == \"ranger\":",
+    ("drive : doublons par l'empreinte du service", "drives.py", "(f.get(\"Hashes\") or {}).get(h)", "f.get(\"Size\")"),
+    ("drive : rien ne part sans le oui", "drives.py", "        return rep\n    if action == \"ranger\":",
      "        plans.get(\"drive:\" + cle) and ranger(cle, plans[\"drive:\" + cle])\n        return rep\n    if action == \"ranger\":"),
-    ("drive : pas de corbeille sans aperçu", DR, "plans.pop(\"drive:\" + cle, None)",
+    ("drive : pas de corbeille sans aperçu", "drives.py", "plans.pop(\"drive:\" + cle, None)",
      "plans.pop(\"drive:\" + cle, None) or _groupes(_liste(cle), garder)"),
-    ("drive : corbeille forcée (Google Drive)", DR, "[\"--drive-use-trash=true\"]", "[]"),
-    ("drive : corbeille forcée (OneDrive)", DR, "[\"--onedrive-hard-delete=false\"]", "[]"),
-    ("drive : réglages RCLONE_* du dehors ignorés", DR, "if not k.startswith(\"RCLONE_\")", "if k"),
-    ("drive : plafond = la liste exacte", DR, "\"--max-delete\", str(len(a_jeter))", "\"--max-delete\", \"-1\""),
-    ("drive : sans corbeille = refusé", DR, "    if type_de(cle) != type_:  # alias", "    if False:  # alias"),
-    ("drive : l'exemplaire gardé est encore là", DR, "if actuel.get(g[\"membres\"][0]) == (g[\"taille\"], g[\"empreinte\"])", "if True"),
-    ("drive : même nom deux fois = jamais proposé", DR, "if vus[c] == 1 and not", "if not"),
-    ("drive : jeton jamais affiché (erreur)", DR, "ne répond pas (code {p.returncode})", "ne répond pas ({p.stderr})"),
-    ("drive : jeton jamais affiché (connexion)", DR, "    if p.returncode or type_de(cle) != type_:", "    print(p.stdout)\n    if p.returncode or type_de(cle) != type_:"),
-    ("drive : dossier de config fermé aux autres", DR, "conf().parent.chmod(0o700)", "conf().parent.chmod(0o755)"),
+    ("drive : corbeille forcée (Google Drive)", "drives.py", "[\"--drive-use-trash=true\"]", "[]"),
+    ("drive : corbeille forcée (OneDrive)", "drives.py", "[\"--onedrive-hard-delete=false\"]", "[]"),
+    ("drive : réglages RCLONE_* du dehors ignorés", "drives.py", "if not k.startswith(\"RCLONE_\")", "if k"),
+    ("drive : plafond = la liste exacte", "drives.py", "\"--max-delete\", str(len(a_jeter))", "\"--max-delete\", \"-1\""),
+    ("drive : sans corbeille = refusé", "drives.py", "    if type_de(cle) != type_:  # alias", "    if False:  # alias"),
+    ("drive : l'exemplaire gardé est encore là", "drives.py", "if actuel.get(g[\"membres\"][0]) == (g[\"taille\"], g[\"empreinte\"])", "if True"),
+    ("drive : même nom deux fois = jamais proposé", "drives.py", "if vus[c] == 1 and not", "if not"),
+    ("drive : jeton jamais affiché (erreur)", "drives.py", "ne répond pas (code {p.returncode})", "ne répond pas ({p.stderr})"),
+    ("drive : jeton jamais affiché (connexion)", "drives.py", "    if p.returncode or type_de(cle) != type_:", "    print(p.stdout)\n    if p.returncode or type_de(cle) != type_:"),
+    ("drive : dossier de config fermé aux autres", "drives.py", "conf().parent.chmod(0o700)", "conf().parent.chmod(0o755)"),
 ]
 
 
@@ -46,7 +52,8 @@ def lancer(n, mutant=None):
     p = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "tests"], cwd=copie,
                        capture_output=True, text=True)
     shutil.rmtree(copie, ignore_errors=True)
-    return p.returncode, (p.stdout.strip().splitlines() or [""])[-1]
+    fin = (p.stdout.strip().splitlines() or [""])[-1]
+    return (p.returncode if " failed" in fin or p.returncode == 0 else 0), fin  # tué = un test ROUGE, pas une erreur de syntaxe
 
 
 def principal():

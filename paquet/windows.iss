@@ -1,7 +1,7 @@
 ﻿; Installeur Windows de SaveSpace Drive (Inno Setup 6). Construit par .github/workflows/build.yml.
 ; Installation pour l'utilisateur seulement : aucun droit administrateur demandé.
 #ifndef Version
-  #define Version "0.1.0"
+  #define Version "0.1.1"
 #endif
 
 [Setup]

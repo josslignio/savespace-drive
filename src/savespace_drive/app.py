@@ -36,7 +36,7 @@ def icloud():
 
 def _au_nuage(p):
     try:
-        return dans_le_nuage(p, os.stat(p))
+        return dans_le_nuage(os.stat(p))
     except OSError:
         return False
 
@@ -102,7 +102,7 @@ def analyser(dossier):
         "doublons": [{"taille": T(g["taille"]), "garde": g["chemins"][0], "en_trop": g["chemins"][1:]} for g in groupes[:LISTE]],
         "gros": [[g["chemin"], T(g["taille"])] for g in r["gros"]],
         "caches": len(r["caches"]), "caches_taille": T(caches), "proteges": len(r["proteges"]),
-        "nuage": r["nuage_seulement"]["fichiers"], "nuage_taille": T(r["nuage_seulement"]["octets"])}}
+        "nuage": lisible.nuage(r["nuage_seulement"]["fichiers"], r["nuage_seulement"]["octets"]) if r["nuage_seulement"]["fichiers"] else ""}}
 
 
 def preparer(dossier):
@@ -356,7 +356,7 @@ function resultat(r){vue=()=>resultat(r);dernier=r;const D=r.drive,esp=r.espace?
  $("t-caches").textContent=D?"Corbeille et autres":"Caches et journaux";
  if(D)carte("c-caches",r.corbeille,"déjà dans la corbeille de "+D+" : la vider sur son site libère cette place."+(r.autres?" Google Photos et Gmail occupent "+r.autres+" : rapport seulement, on n'y touche pas.":""),[]);
  else carte("c-caches",r.caches?r.caches_taille:"Aucun",r.caches?n(r.caches,"fichier")+" de cache ou de journal. Ils se recréent tout seuls quand une app en a besoin.":"Pas de cache ni de journal dans ce dossier.",[]);
- $("note").textContent=[r.nuage?n(r.nuage,"fichier")+" dans le nuage seulement ("+r.nuage_taille+") : pas téléchargés, donc pas examinés.":"",r.proteges?n(r.proteges,"fichier")+" sensibles (clés, .git) ignorés : on n'y touche jamais.":""].filter(Boolean).join(" ")}
+ $("note").textContent=[r.nuage,r.proteges?n(r.proteges,"fichier")+" sensibles (clés, .git) ignorés : on n'y touche jamais.":""].filter(Boolean).join(" ")}
 async function connecter(){travail("Connexion à "+nom+"…","Termine la connexion dans ton navigateur, puis reviens ici.");$("sous").textContent="Termine la connexion dans ton navigateur, puis reviens ici.";
  const d=await appel("connecter");if(!d.erreur)E[drive].ok=true;accueil();msg(d.texte,d.erreur?"erreur":"info")}
 async function analyser(){travail("Analyse de « "+nom+" »…");const d=await appel("analyser");if(d.erreur){accueil();return msg(d.texte,"erreur")}resultat(d.resultat)}

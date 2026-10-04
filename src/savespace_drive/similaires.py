@@ -3,7 +3,8 @@
 seule, stdlib seule, aucun binaire appelé (czkawka_cli écarté par écrit, CANDIDATS.md DN5A)."""
 import json, os, sys
 from argparse import ArgumentParser
-from savespace_drive.chemins import COMPOSANTES_NOIRES
+import collections
+from savespace_drive.chemins import COMPOSANTES_NOIRES, dans_le_nuage
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".gif", ".bmp", ".ppm", ".mp4", ".mov", ".mkv", ".avi"}
 
@@ -16,11 +17,14 @@ def _principal(argv=None):
     if not 0 <= args.seuil <= 255 or os.path.realpath(args.dossier) == "/" or not os.path.isdir(args.dossier):
         print(f"similaires : refus — seuil {args.seuil} hors [0, 255], dossier absent ou racine « / »", file=sys.stderr)
         return 2
-    fichiers = {}
+    vus = {}  # pas sur ce disque (iCloud…) : jamais ouvert ; taille unique : jamais lu (seules les mêmes tailles se comparent)
     for courant, sous, noms in os.walk(args.dossier):
         sous[:] = [d for d in sous if d not in COMPOSANTES_NOIRES]
         for chemin in (os.path.join(courant, n) for n in noms if os.path.splitext(n)[1].lower() in EXTENSIONS):
-            fichiers[os.path.relpath(chemin, args.dossier).replace(os.sep, "/")] = (os.path.getsize(chemin), open(chemin, "rb").read())
+            if not dans_le_nuage(st := os.stat(chemin)):
+                vus[os.path.relpath(chemin, args.dossier).replace(os.sep, "/")] = (chemin, st.st_size)
+    tailles = collections.Counter(t for _, t in vus.values())
+    fichiers = {r: (t, open(c, "rb").read() if tailles[t] > 1 else b"") for r, (c, t) in vus.items()}
     groupes, restants = [], sorted(fichiers)
     while restants:
         depart = restants.pop(0)

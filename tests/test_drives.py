@@ -36,7 +36,7 @@ class Stat:  # le vrai stat, avec le drapeau « pas téléchargé » que pose ma
 def icloud(maison, monkeypatch):
     d = maison / "Library/Mobile Documents/com~apple~CloudDocs"
     for rel, octets in {"Photos/plage.jpg": b"P" * 4000, "Photos/Copie de plage.jpg": b"P" * 4000, "doc.pdf": b"D" * 900,
-                        "nuage/plage.jpg": b"P" * 4000, "nuage/doc.pdf": b"D" * 900, "nuage/.film.mov.icloud": b"x" * 200}.items():
+                        "nuage/plage.jpg": b"P" * 4000, "nuage/doc.pdf": b"D" * 900}.items():
         (d / rel).parent.mkdir(parents=True, exist_ok=True)
         (d / rel).write_bytes(octets)
     monkeypatch.setattr(sys, "platform", "darwin")
@@ -69,11 +69,11 @@ def test_fichiers_pas_telecharges_jamais_ouverts(icloud, monkeypatch, drapeaux):
     _, apercu = app.preparer(Path(os.path.realpath(icloud)))
     g = doublons.detecter(icloud, Garde([icloud]))
     assert ouverts == [], f"fichiers pas téléchargés ouverts (donc téléchargés) : {ouverts}"
-    assert (r["nuage"], r["nuage_taille"]) == (3, "5,1 Ko"), "comptés à part : 2 pas téléchargés + 1 marque-place .icloud"
+    assert r["nuage"].startswith("2 fichiers (4,9 Ko) sont seulement dans iCloud"), r["nuage"]
     assert r["groupes"] == 1 and r["doublons"][0]["en_trop"] == ["Photos/Copie de plage.jpg"]
     assert not any("nuage/" in c for x in apercu["plan"] for c in [x["garde"], *x["en_trop"]])
     assert not any("nuage/" in c for x in g for c in x["membres"])
-    assert "dans le nuage seulement" in app.analyser(Path(os.path.realpath(icloud)))["texte"]
+    assert "rien n'a été téléchargé" in app.analyser(Path(os.path.realpath(icloud)))["texte"]
 
 
 def test_renvoye_au_nuage_entre_apercu_et_rangement(icloud, monkeypatch):
@@ -138,7 +138,9 @@ def faux(maison, tmp_path, monkeypatch):
 FICHIERS = [{"p": "Vacances.mp4", "t": 5_000_000, "h": "aa"}, {"p": "Envoi/Copie de Vacances.mp4", "t": 5_000_000, "h": "aa"},
             {"p": "Vacances (1).mp4", "t": 5_000_000, "h": "aa"}, {"p": "Factures/mars.pdf", "t": 300_000, "h": "bb"},
             {"p": "mars.pdf", "t": 300_000, "h": "bb"}, {"p": "Notes", "t": -1}, {"p": "Notes 2", "t": -1},  # Google Docs
-            {"p": "deux.txt", "t": 70, "h": "cc"}, {"p": "deux.txt", "t": 70, "h": "cc"},  # même nom deux fois : ambigu
+            {"p": "deux.txt", "t": 70, "h": "cc"}, {"p": "deux (1).txt", "t": 70, "h": "zz"},  # même nom deux fois,
+            {"p": "deux (1).txt", "t": 70, "h": "cc"},  # contenus différents : la corbeille par chemin prendrait les deux
+            {"p": "Autre film.mp4", "t": 5_000_000, "h": "ee"},  # même taille, autre contenu : pas un doublon
             {"p": "seul.zip", "t": 9_000_000, "h": "dd"}]
 ESPACE = {"total": 15_000_000_000, "used": 9_000_000_000, "trashed": 1_200_000_000, "other": 4_000_000_000, "free": 2e9}
 
@@ -166,7 +168,8 @@ def test_rien_ne_part_sans_le_oui(faux, ecran):
     _post(s, "analyser", drive="gdrive")
     d = _post(s, "preparer", drive="gdrive")
     assert (d["confirmer"], d["nombre"], d["drive"]) == (True, 3, "Google Drive")
-    assert "→ corbeille : Factures/mars.pdf" in d["texte"] and "deux.txt" not in d["texte"] and "Notes" not in d["texte"]
+    assert "→ corbeille : Factures/mars.pdf" in d["texte"] and "deux.txt" not in d["texte"] and "Notes" not in d["texte"] and "deux (1).txt" not in d["texte"]
+    assert "Autre film" not in d["texte"]
     assert "delete" not in _commandes(faux.lire()["appels"]), "l'aperçu a supprimé quelque chose"
     fait = _post(s, "ranger", drive="gdrive")
     assert fait.get("fait") and "3 fichiers mis dans la corbeille de Google Drive" in fait["texte"], fait

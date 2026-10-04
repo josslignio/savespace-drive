@@ -106,7 +106,7 @@ def analyser(cle, garder, liste):
         "doublons": [{"taille": T(g["taille"]), "garde": g["membres"][0], "en_trop": g["membres"][1:]} for g in groupes[:liste]],
         "gros": [[c, T(t)] for c, t in gros], "corbeille": T(esp.get("trashed", 0)),
         "autres": T(esp["other"]) if esp.get("other") else "",  # Google Drive : Gmail et Google Photos — rapport seulement
-        "caches": 0, "caches_taille": "", "proteges": 0, "nuage": 0}}
+        "caches": 0, "caches_taille": "", "proteges": 0, "nuage": ""}}
 
 
 def preparer(cle, garder, liste):

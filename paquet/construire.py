@@ -1,14 +1,14 @@
 """Construit l'app de bureau avec PyInstaller (outil existant) — à lancer sur le système visé.
 Mac : dist/SaveSpace Drive.app puis dist/SaveSpace-Drive-<version>-mac.dmg (hdiutil, fourni avec macOS).
 Windows : dist/SaveSpace Drive.exe (un seul fichier) ; l'installeur se fait ensuite avec paquet/windows.iss (Inno Setup).
-Usage : python paquet/construire.py   (variables facultatives : VERSION=0.1.0, ARCH=universal2)"""
+Usage : python paquet/construire.py   (variables facultatives : VERSION=0.1.1, ARCH=universal2)"""
 import os, plistlib, shutil, subprocess, sys
 from pathlib import Path
 import PyInstaller.__main__
 
 RACINE = Path(__file__).resolve().parents[1]
 ICONE, DIST, TRAVAIL = RACINE / "paquet" / "icone", RACINE / "dist", RACINE / "build"
-NOM, VERSION = "SaveSpace Drive", os.environ.get("VERSION", "0.1.0").lstrip("v")
+NOM, VERSION = "SaveSpace Drive", os.environ.get("VERSION", "0.1.1").lstrip("v")
 
 
 def principal():
