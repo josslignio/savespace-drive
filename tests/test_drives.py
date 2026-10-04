@@ -1,7 +1,7 @@
 """Drives : iCloud Drive (dossier local, fichiers pas téléchargés jamais ouverts) et Google Drive / OneDrive / Dropbox
 (rclone). Hermétique : HOME jetable, faux rclone (tests/faux_rclone.py) ou vrai rclone sur un remote alias LOCAL
 (remote_local.py). Aucun vrai compte n'est jamais touché."""
-import builtins, io, json, os, shutil, stat, sys
+import builtins, io, json, os, shutil, stat, subprocess, sys, types
 from pathlib import Path
 
 import pytest
@@ -40,6 +40,7 @@ def icloud(maison, monkeypatch):
         (d / rel).parent.mkdir(parents=True, exist_ok=True)
         (d / rel).write_bytes(octets)
     monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(drives, "rclone", lambda: None)  # page sans chercher rclone (shutil.which et faux « darwin »)
     return d
 
 
@@ -116,14 +117,11 @@ def faux(maison, tmp_path, monkeypatch):
     d = tmp_path / "faux"
     d.mkdir()
     shutil.copy(FAUX, d / "faux_rclone.py")
-    if os.name == "nt":
-        exe = d / "rclone.cmd"
-        exe.write_text(f'@"{sys.executable}" "{d / "faux_rclone.py"}" %*\n')
-    else:
-        exe = d / "rclone"
-        exe.write_text(f"#!{sys.executable}\n" + FAUX.read_text())
-        exe.chmod(0o755)
-    monkeypatch.setattr(drives, "rclone", lambda: str(exe))
+    exe, vrai_run = str(d / "faux_rclone.py"), subprocess.run
+    monkeypatch.setenv("APPDATA", str(maison / "AppData" / "Roaming"))  # Windows : la config reste dans la maison jetable
+    monkeypatch.setattr(drives, "rclone", lambda: exe)
+    monkeypatch.setattr(drives, "subprocess", types.SimpleNamespace(  # le faux rclone est un script : lancé par Python
+        TimeoutExpired=subprocess.TimeoutExpired, run=lambda argv, **k: vrai_run([sys.executable, *argv] if argv[0] == exe else argv, **k)))
     etat = d / "rclone.json"
 
     def poser(cle="gdrive", type_="drive", **e):

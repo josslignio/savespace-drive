@@ -1,6 +1,8 @@
 # Construit l'app Mac (.dmg) et Windows (.exe + installeur + paquet .msix pour le Microsoft Store)
 # quand on pousse une étiquette v* (ex. v0.1.0). Rien n'est publié : les fichiers sont des « artefacts »
 # à télécharger depuis l'onglet Actions. Rien n'est signé par nous (zéro option payante) : voir docs/APP_BUREAU.md.
+# paquet/construire.py télécharge le rclone officiel (Mac : arm64 + amd64 réunis ; Windows : amd64), vérifie son SHA256
+# (épinglé dans le script ET publié dans SHA256SUMS) et l'inclut dans l'app : aucun Homebrew pour les utilisateurs.
 # Identité Store du .msix : variables du dépôt MSIX_IDENTITY_NAME, MSIX_PUBLISHER, MSIX_PUBLISHER_DISPLAY_NAME
 # (Settings → Secrets and variables → Actions → Variables), ou champs ci-dessous en lancement manuel.
 name: Construire les apps

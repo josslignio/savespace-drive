@@ -311,7 +311,7 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <h2 id="t-caches">Caches et journaux</h2><div class="valeur"></div><p></p><details><summary>Voir la liste</summary><div class="liste"></div></details></div>
 </section><div id="note"></div>
 </main>
-<footer><span>Tout se passe sur ton ordinateur : rien n'est envoyé sur Internet.</span><span>{OUTILS}</span><button class="lien" id="quitter" style="margin:0;font-size:inherit">Quitter</button></footer>
+<footer><span>Rien n'est envoyé chez nous. Un drive en ligne n'est contacté que si tu le connectes, pour lire la liste de tes fichiers.</span><span>{OUTILS}</span><button class="lien" id="quitter" style="margin:0;font-size:inherit">Quitter</button></footer>
 <div id="voile" hidden><div class="feuille" role="dialog" aria-modal="true" aria-labelledby="f-titre">
 <h1 id="f-titre"></h1><p class="sous" id="f-texte" style="margin:0 0 14px;max-width:none"></p><div class="liste" id="f-liste"></div>
 <div class="actions"><button class="bouton2" id="f-non">Annuler</button><button class="principal" id="f-oui"></button></div></div></div>
