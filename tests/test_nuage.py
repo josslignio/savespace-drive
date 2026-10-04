@@ -1,7 +1,7 @@
 """Hotfix 0.1.1 — Bureau et Documents synchronisés par iCloud : un fichier « seulement dans iCloud » (dataless) n'est
 JAMAIS ouvert (l'ouvrir le télécharge, un par un : analyse bloquée 400 s mesurées, disque qui se remplit), et un fichier
 de taille unique n'est jamais lu (aucun doublon possible). Hermétique : le drapeau macOS est simulé sur le stat."""
-import builtins, io, json, os, sys
+import builtins, io, json, os, shutil, sys
 from pathlib import Path
 
 import pytest
@@ -73,7 +73,8 @@ def test_seulement_dans_le_nuage_jamais_ouvert(espion, maison, monkeypatch, drap
     texte = app.analyser(racine)
     assert "3 fichiers (5,2 Ko) sont seulement dans " in texte["texte"] and "rien n'a été téléchargé" in texte["texte"]
     assert texte["resultat"]["nuage"].startswith("3 fichiers (5,2 Ko) sont seulement dans ")
-    assert range_.principal([str(racine / "Bureau"), "--oui"]) == 0 and not [o for o in ouverts if o in NUAGE], "range a lu le nuage"
+    rc_r = range_.principal([str(racine / "Bureau"), "--oui"])  # range exige rclone (moteur optionnel) : rc 3 sans lui
+    assert (rc_r == 0 or shutil.which("rclone") is None) and not [o for o in ouverts if o in NUAGE], "range a lu le nuage"
     assert all((racine / x).is_file() for x in NUAGE), "un fichier resté dans iCloud a été déplacé"
 
 
