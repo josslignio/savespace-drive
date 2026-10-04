@@ -8,6 +8,14 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 COMPOSANTES_NOIRES = frozenset({".ssh", ".gnupg", ".git", "Keychains"})
+SF_DATALESS = 0x40000000  # macOS : contenu resté dans iCloud (stat.SF_DATALESS en Python 3.13)
+A_LA_DEMANDE = 0x1000 | 0x40000 | 0x400000  # Windows (OneDrive…) : OFFLINE, RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS
+
+
+def dans_le_nuage(st) -> bool:
+    """Vrai si le contenu n'est pas sur ce disque : l'ouvrir le TÉLÉCHARGERAIT (un par un, sans fin, et remplirait
+    le disque). Se lit sur le stat seul ; un tel fichier n'est jamais ouvert."""
+    return bool(getattr(st, "st_flags", 0) & SF_DATALESS or getattr(st, "st_file_attributes", 0) & A_LA_DEMANDE)
 
 class RefusChemin(Exception):
     pass

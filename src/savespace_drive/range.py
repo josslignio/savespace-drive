@@ -1,6 +1,6 @@
 """savespace_drive.range : rangement de CIBLE en <= N dossiers (SPEC S1, DN6C). Stdlib seule."""
 import hashlib, json, os, subprocess, sys, time
-from savespace_drive.chemins import Garde, RefusChemin
+from savespace_drive.chemins import Garde, RefusChemin, dans_le_nuage
 EXT = {e: c for c, l in {"Documents": ".pdf .txt .md .doc .docx .rtf .json", "Images": ".jpg .jpeg .png .gif .heic .bmp .svg .ppm", "Vidéos": ".mp4 .mov .mkv .avi", "Musique": ".mp3 .m4a .wav", "Archives": ".zip .tar .gz .rar .7z .dmg"}.items() for e in l.split()}
 def _cat(nom, autorises):
     c = EXT.get(os.path.splitext(nom)[1].lower()); return c if c in autorises else "Divers"
@@ -19,7 +19,7 @@ def principal(argv=None):
     if ":" in cible: return _distant(cible, autorises, oui)
     if not os.path.isdir(cible) or os.path.realpath(cible) == "/" or (os.environ.get("HOME") and os.path.realpath(cible) == os.path.realpath(os.environ["HOME"])): print("range : cible locale invalide", file=sys.stderr); return 2
     garde, occupes, plan, dossiers, octets = Garde([cible]), set(os.listdir(cible)), [], set(), 0
-    fichiers = sorted(f for f in os.listdir(cible) if os.path.isfile(os.path.join(cible, f)) and not os.path.islink(os.path.join(cible, f)))
+    fichiers = sorted(f for f in os.listdir(cible) if os.path.isfile(os.path.join(cible, f)) and not os.path.islink(os.path.join(cible, f)) and not dans_le_nuage(os.stat(os.path.join(cible, f))))
     for nom in fichiers:
         src, cat, dst = os.path.join(cible, nom), _cat(nom, autorises), os.path.join(cible, _cat(nom, autorises), nom)
         if (cat in occupes and not os.path.isdir(os.path.join(cible, cat))) or os.path.exists(dst): print("range : collision pour " + nom, file=sys.stderr); return 3

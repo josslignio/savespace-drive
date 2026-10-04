@@ -11,11 +11,13 @@ ou .git. Tous les chemins imprimés sont RELATIFS à DOSSIER. Refus net (rc != 0
 écriture) si la racine est « / » ou le HOME (env) du processus.
 """
 import argparse
+import collections
 import hashlib
 import json
 import os
 import sys
 from pathlib import Path
+from savespace_drive.chemins import dans_le_nuage
 
 
 def _refuser(message):
@@ -47,18 +49,27 @@ def _empreinte(chemin):
 
 def analyser(racine, top):
     """Parcourt racine en lecture seule ; renvoie le rapport (chemins relatifs str)."""
-    fichiers = []  # (chemin_relatif, taille, sha256 ou None si protégé : jamais groupé)
+    vus, nuage = [], [0, 0]  # nuage : pas sur ce disque (iCloud…) — jamais ouverts, comptés à part
     for dossier, sous_dossiers, noms in os.walk(racine):
         sous_dossiers[:] = sorted(sous_dossiers)
         for nom in sorted(noms):
             brut = Path(dossier) / nom
             try:
-                taille = brut.stat().st_size
-                relatif = brut.relative_to(racine).as_posix()
-                empreinte = None if _protege(relatif) else _empreinte(brut)
+                st = brut.stat()
             except OSError:
-                continue  # illisible : ignoré — l'analyse à blanc n'écrit ni ne s'arrête
-            fichiers.append((relatif, taille, empreinte))
+                continue
+            if dans_le_nuage(st):
+                nuage[0], nuage[1] = nuage[0] + 1, nuage[1] + st.st_size
+                continue
+            vus.append((brut.relative_to(racine).as_posix(), st.st_size))
+    tailles = collections.Counter(t for c, t in vus if not _protege(c))
+    fichiers = []  # (chemin_relatif, taille, sha256 ou None si protégé ou de taille unique : jamais groupé)
+    for relatif, taille in vus:
+        try:  # taille unique : aucun doublon possible, le fichier n'est jamais lu
+            empreinte = _empreinte(racine / relatif) if tailles[taille] > 1 and not _protege(relatif) else None
+        except OSError:
+            continue  # illisible : ignoré — l'analyse à blanc n'écrit ni ne s'arrête
+        fichiers.append((relatif, taille, empreinte))
     groupes = {}
     for chemin, taille, empreinte in fichiers:
         if empreinte is not None:
@@ -79,6 +90,7 @@ def analyser(racine, top):
         "gros": [{"chemin": chemin, "taille": taille} for chemin, taille, _ in gros],
         "caches": sorted(chemin for chemin, _, _ in fichiers if _cache(chemin)),
         "proteges": sorted(chemin for chemin, _, _ in fichiers if _protege(chemin)),
+        "nuage_seulement": {"fichiers": nuage[0], "octets": nuage[1]},
     }
 
 

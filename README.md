@@ -34,6 +34,8 @@ dans les Issues.
 
 ## Limites, en clair
 - La quarantaine reste sur le même disque : la place n'est libérée que quand tu la vides toi-même.
+- Les fichiers « seulement dans iCloud » (Bureau et Documents synchronisés, iCloud Drive) sont ignorés : jamais
+  ouverts, donc jamais téléchargés ; ils sont comptés à part. Seuls les fichiers présents sur le Mac sont examinés.
 - Les gros fichiers et les caches sont montrés, jamais supprimés : à toi de décider.
 - Le dossier personnel entier et la racine du disque sont refusés (trop risqué en un clic).
 - En ligne de commande, `doublons` garde encore le premier nom par ordre alphabétique (l'app, elle,

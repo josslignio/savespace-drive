@@ -2,7 +2,7 @@
 import hashlib, json, os, sys, time
 from argparse import ArgumentParser
 from pathlib import Path
-from savespace_drive.chemins import Garde, RefusChemin
+from savespace_drive.chemins import Garde, RefusChemin, dans_le_nuage
 NOIRES = {".ssh", ".gnupg", ".git", "Keychains"}
 def _sha256(p):
     with open(p, "rb") as f: return hashlib.sha256(f.read()).hexdigest()
@@ -14,7 +14,8 @@ def cibles(racine, jours):
         c, dl = rel[:2] in (("Library", "Caches"), ("Library", "Logs")), rel[:1] == ("Downloads",)
         for n in noms:
             p = Path(d) / n
-            if c or Path(n).suffix.lower() in (".dmg", ".pkg") or (dl and p.stat().st_mtime < limite): vus.append(p)
+            if dans_le_nuage(st := p.stat()): continue  # pas sur ce disque : rien à libérer, et le lire le téléchargerait
+            if c or Path(n).suffix.lower() in (".dmg", ".pkg") or (dl and st.st_mtime < limite): vus.append(p)
     return sorted(set(vus))
 def principal(argv=None):
     a = ArgumentParser(prog="savespace_drive.caches")
