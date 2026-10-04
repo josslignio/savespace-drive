@@ -49,10 +49,10 @@ analyse.dans_le_nuage = doublons.dans_le_nuage = lambda st: st.st_ino in INOEUDS
 FAUX = DEMO / "faux_rclone"  # faux Google Drive : aucun compte, aucun réseau (tests/faux_rclone.py)
 FAUX.mkdir(exist_ok=True)
 (FAUX / "faux_rclone.py").write_text((Path(__file__).resolve().parents[1] / "tests" / "faux_rclone.py").read_text())
-_run = subprocess.run
 drives.rclone = lambda: str(FAUX / "faux_rclone.py")
 drives.subprocess = type(sys)("faux_subprocess")
-drives.subprocess.TimeoutExpired, drives.subprocess.run = subprocess.TimeoutExpired, lambda a, **k: _run([sys.executable, *a], **k)
+drives.subprocess.__dict__.update(PIPE=subprocess.PIPE, TimeoutExpired=subprocess.TimeoutExpired, CompletedProcess=subprocess.CompletedProcess,
+                                  Popen=lambda a, **k: subprocess.Popen([sys.executable, *a], **k))
 
 
 def drive_neuf():

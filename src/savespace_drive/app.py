@@ -331,7 +331,7 @@ function accueil(){vue=accueil;$("cartes").hidden=true;$("note").textContent="";
  if(drive){const D=E[drive];
   if(!E.rclone)return heros({icone:"logo",titre:D.nom,sous:"Pour "+D.nom+", SaveSpace Drive utilise le moteur gratuit rclone : il est inclus dans l'app téléchargée, mais introuvable ici."});
   if(!D.ok)return heros({icone:"logo",titre:"Connecte "+D.nom,sous:"Ton navigateur va s'ouvrir sur la page de connexion de "+D.nom+" : SaveSpace Drive ne voit jamais ton mot de passe. Ensuite, l'analyse lit seulement la liste de tes fichiers : rien n'est téléchargé.",bouton:"Connecter "+D.nom,action:connecter});
-  return heros({icone:"logo",titre:"Retrouve de la place sur "+D.nom,sous:"Analyser lit seulement la liste de tes fichiers et leurs empreintes : rien n'est téléchargé, rien ne bouge.",bouton:"Analyser",action:analyser})}
+  return heros({icone:"logo",titre:"Retrouve de la place sur "+D.nom,sous:"Analyser lit seulement la liste de tes fichiers et leurs empreintes : rien n'est téléchargé, rien ne bouge.",bouton:"Analyser",action:analyser,lien:"Déconnecter "+D.nom,actionLien:deconnecter})}
  heros({icone:"logo",titre:"Retrouve de la place",sous:!dossier?"Choisis d'abord un dossier ci-dessus.":lieu==="icloud"?ICLOUD:"Le dossier « "+nom+" » va être examiné. Analyser regarde seulement : rien ne bouge sans ton accord.",bouton:"Analyser",action:analyser});
  $("principal").disabled=!dossier}
 function travail(titre,attente){const t0=Date.now();$("cartes").hidden=true;$("note").textContent="";msg("");bloque(true);
@@ -357,6 +357,8 @@ function resultat(r){vue=()=>resultat(r);dernier=r;const D=r.drive,esp=r.espace?
  if(D)carte("c-caches",r.corbeille,"déjà dans la corbeille de "+D+" : la vider sur son site libère cette place."+(r.autres?" Google Photos et Gmail occupent "+r.autres+" : rapport seulement, on n'y touche pas.":""),[]);
  else carte("c-caches",r.caches?r.caches_taille:"Aucun",r.caches?n(r.caches,"fichier")+" de cache ou de journal. Ils se recréent tout seuls quand une app en a besoin.":"Pas de cache ni de journal dans ce dossier.",[]);
  $("note").textContent=[r.nuage,r.proteges?n(r.proteges,"fichier")+" sensibles (clés, .git) ignorés : on n'y touche jamais.":""].filter(Boolean).join(" ")}
+async function deconnecter(){const d=await appel("deconnecter");if(d.erreur)return msg(d.texte,"erreur");E[drive].ok=false;accueil();
+ $("ext").hidden=false;$("ext").href=d.lien;$("ext").textContent=d.lien_texte;msg(d.texte,"info")}
 async function connecter(){travail("Connexion à "+nom+"…","Termine la connexion dans ton navigateur, puis reviens ici.");$("sous").textContent="Termine la connexion dans ton navigateur, puis reviens ici.";
  const d=await appel("connecter");if(!d.erreur)E[drive].ok=true;accueil();msg(d.texte,d.erreur?"erreur":"info")}
 async function analyser(){travail("Analyse de « "+nom+" »…");const d=await appel("analyser");if(d.erreur){accueil();return msg(d.texte,"erreur")}resultat(d.resultat)}
@@ -397,6 +399,10 @@ choisirLieu("mac");
 
 
 class Serveur(ThreadingHTTPServer):
+    def server_close(self):  # l'app se ferme : un rclone encore en route (connexion abandonnée) part avec elle
+        drives.arreter()
+        super().server_close()
+
     def server_bind(self):  # sans socket.getfqdn : dans l'app Mac, cette résolution de nom inutile bloquait 35 s au lancement
         socketserver.TCPServer.server_bind(self)
         self.server_name, self.server_port = "127.0.0.1", self.server_address[1]

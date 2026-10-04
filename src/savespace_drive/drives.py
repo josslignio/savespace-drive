@@ -14,8 +14,11 @@ DRIVES = {
     "onedrive": ("OneDrive", "onedrive", "quickxor", ["--onedrive-hard-delete=false"], "https://onedrive.live.com/?qt=recyclebin"),
     "dropbox": ("Dropbox", "dropbox", "dropbox", [], "https://www.dropbox.com/deleted_files"),  # rclone n'a pas d'effacement définitif Dropbox
 }
+REVOQUER = {"gdrive": "https://myaccount.google.com/permissions", "onedrive": "https://account.live.com/consent/Manage",
+            "dropbox": "https://www.dropbox.com/account/connected_apps"}  # où retirer l'accès donné à rclone
 CONNEXION = {"gdrive": ["scope", "drive"]}  # Drive : accès complet, sinon impossible de mettre à la corbeille
 GROS = 10
+EN_COURS = []  # rclone lancés et pas finis : tués à la fermeture de l'app (sinon une connexion restée ouverte bloque la suivante)
 
 
 class Refus(Exception):
@@ -43,11 +46,24 @@ def _rclone(*args, entree="", delai=3600):
     if not exe:
         raise Refus("Le moteur rclone manque. Il est inclus dans l'app téléchargée ; en ligne de commande, installe rclone.")
     env = {k: v for k, v in os.environ.items() if not k.startswith("RCLONE_")}  # rien du dehors ne change rclone (corbeille comprise)
+    p = subprocess.Popen([exe, *args, "--config", str(conf())], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True, env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    EN_COURS.append(p)
     try:
-        return subprocess.run([exe, *args, "--config", str(conf())], input=entree, capture_output=True, text=True,
-                              timeout=delai, env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        sortie, erreurs = p.communicate(entree, timeout=delai)
     except subprocess.TimeoutExpired:
+        p.kill()
+        p.communicate()
         raise Refus("Le service n'a pas répondu à temps. Rien n'a été modifié.") from None
+    finally:
+        EN_COURS.remove(p)
+    return subprocess.CompletedProcess(p.args, p.returncode, sortie, erreurs)
+
+
+def arreter():
+    """Tue les rclone encore en route (connexion abandonnée, app qui se ferme)."""
+    for p in list(EN_COURS):
+        p.kill()
 
 
 def type_de(cle):
@@ -65,10 +81,22 @@ def connecter(cle):
     nom, type_ = DRIVES[cle][:2]
     conf().parent.mkdir(parents=True, exist_ok=True)
     conf().parent.chmod(0o700)  # le jeton n'est lisible que par toi (rclone crée le fichier en 600)
+    arreter()  # une connexion précédente restée ouverte tient le port de rclone : on la remplace
     p = _rclone("config", "create", cle, type_, *CONNEXION.get(cle, []), delai=600)  # rclone ouvre le navigateur
     if p.returncode or type_de(cle) != type_:
         raise Refus(f"La connexion à {nom} n'a pas abouti (code {p.returncode}). Rien n'a été modifié. Tu peux réessayer.")
     return {"texte": f"{nom} est connecté. Analyser lit seulement la liste de tes fichiers : rien n'est téléchargé.", "connecte": True}
+
+
+def deconnecter(cle):
+    nom = DRIVES[cle][0]
+    if type_de(cle) is not None:
+        _rclone("config", "delete", cle, delai=60)  # rclone retire la section (jeton compris) de sa config
+    if type_de(cle) is not None:
+        raise Refus(f"{nom} n'a pas pu être déconnecté. Rien n'a été modifié.")
+    return {"texte": f"{nom} est déconnecté de SaveSpace Drive. Pour retirer aussi l'accès chez {nom}, ouvre sa page "
+                     "des applications autorisées et retire « rclone ».", "lien": REVOQUER[cle],
+            "lien_texte": f"Retirer l'accès sur le site de {nom}", "deconnecte": True}
 
 
 def _liste(cle, chemins=None):
@@ -154,6 +182,9 @@ def executer(plans, action, cle, garder, liste):
         return connecter(cle)
     if action == "restaurer":
         return restaurer(cle)
+    if action == "deconnecter":
+        plans.pop("drive:" + cle, None)
+        return deconnecter(cle)
     if type_de(cle) is None:
         raise Refus(f"Connecte d'abord {DRIVES[cle][0]}.")
     if action == "analyser":

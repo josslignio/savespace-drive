@@ -35,8 +35,11 @@ if [ -z "$DMG_URL" ]; then
   echo "Recherche de la dernière version…"
   INFOS="$(curl -fsSL "$API/repos/$DEPOT/releases/latest")" \
     || echec "aucune version publiée trouvée pour $DEPOT, ou pas de connexion Internet."
-  DMG_URL="$(printf '%s\n' "$INFOS" | grep -o '"browser_download_url": *"[^"]*\.dmg"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')"
-  [ -n "$DMG_URL" ] || echec "aucun fichier .dmg dans la dernière version publiée de $DEPOT."
+  LISTE="$(printf '%s\n' "$INFOS" | grep -o '"browser_download_url": *"[^"]*\.dmg"' | sed 's/.*"\([^"]*\)"$/\1/')"
+  PUCE="$(uname -m)"   # arm64 (puce Apple) ou x86_64 (Intel) : le .dmg de cette puce, sinon l'universel
+  DMG_URL="$(printf '%s\n' "$LISTE" | grep -- "-mac-$PUCE\.dmg$" | head -n 1)"
+  [ -n "$DMG_URL" ] || DMG_URL="$(printf '%s\n' "$LISTE" | grep -- "-mac\.dmg$" | head -n 1)"
+  [ -n "$DMG_URL" ] || echec "aucun .dmg pour ce Mac ($PUCE) dans la dernière version publiée de $DEPOT."
 fi
 
 TRAVAIL="$(mktemp -d "${TMPDIR:-/tmp}/savespace-install.XXXXXX")" || echec "impossible de créer un dossier de travail."

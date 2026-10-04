@@ -14,7 +14,8 @@ L'app n'est pas signée par un certificat payant : c'est un choix, tout est grat
   ```sh
   curl -fsSL https://raw.githubusercontent.com/josslignio/savespace-drive/main/install.sh | sh
   ```
-- **Le fichier .dmg** (page [Releases](https://github.com/josslignio/savespace-drive/releases)) : l'ouvrir,
+- **Le fichier .dmg** (page [Releases](https://github.com/josslignio/savespace-drive/releases) : `…-mac-arm64.dmg`
+  pour un Mac à puce Apple, `…-mac-x86_64.dmg` pour un Mac Intel ; la ligne Terminal choisit seule) : l'ouvrir,
   glisser SaveSpace Drive sur Applications, l'ouvrir. macOS dit « Apple ne peut pas vérifier… » →
   **Terminé**. Puis **Réglages Système → Confidentialité et sécurité** → tout en bas,
   **Ouvrir quand même** → confirmer. Une seule fois.
@@ -54,7 +55,7 @@ dans les Issues.
   comptés comme doublons. Deux fichiers au même nom au même endroit (Drive le permet) ne sont jamais proposés.
 - Google Photos et Gmail : leur place est affichée (rapport seulement), on n'y touche pas.
 - La place d'un drive n'est libérée que quand sa corbeille est vidée (sur son site, ou seule après 30 jours).
-- L'app pèse plus lourd (≈ 220 Mo sur Mac) : elle contient le moteur rclone officiel pour les deux puces.
+- L'app pèse plus lourd (≈ 110 Mo installée, .dmg de 43 Mo pour puce Apple) : elle contient le moteur rclone officiel.
 - En ligne de commande, `doublons` garde encore le premier nom par ordre alphabétique (l'app, elle,
   garde l'original).
 

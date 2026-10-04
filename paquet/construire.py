@@ -3,14 +3,16 @@ Mac : dist/SaveSpace Drive.app puis dist/SaveSpace-Drive-<version>-mac.dmg (hdiu
 Windows : dist/SaveSpace Drive.exe (un seul fichier) ; l'installeur se fait ensuite avec paquet/windows.iss (Inno Setup).
 Le moteur rclone (MIT) est inclus : binaire OFFICIEL téléchargé sur downloads.rclone.org, refusé si son SHA256 diffère
 de l'empreinte épinglée ici OU de celle publiée dans SHA256SUMS. Mac : les deux puces réunies (lipo). Aucun Homebrew.
-Usage : python paquet/construire.py   (variables facultatives : VERSION=0.1.1, ARCH=universal2)"""
+Usage : python paquet/construire.py   (variables facultatives : VERSION=0.2.0, ARCH=arm64|x86_64|universal2)"""
 import hashlib, io, os, plistlib, shutil, subprocess, sys, urllib.request, zipfile
 from pathlib import Path
 import PyInstaller.__main__
 
 RACINE = Path(__file__).resolve().parents[1]
 ICONE, DIST, TRAVAIL = RACINE / "paquet" / "icone", RACINE / "dist", RACINE / "build"
-NOM, VERSION = "SaveSpace Drive", os.environ.get("VERSION", "0.1.1").lstrip("v")
+NOM, VERSION = "SaveSpace Drive", os.environ.get("VERSION", "0.2.0").lstrip("v")
+ARCH = os.environ.get("ARCH", "")  # Mac : arm64 ou x86_64 = un .dmg par puce, avec SON rclone seulement (2 fois plus léger)
+PUCES = {"arm64": ("osx-arm64",), "x86_64": ("osx-amd64",)}.get(ARCH, ("osx-arm64", "osx-amd64"))
 RCLONE = "v1.75.1"  # empreintes relevées le 04/10/2026 dans https://downloads.rclone.org/v1.75.1/SHA256SUMS (signé PGP)
 RCLONE_ZIP = {"osx-arm64": "c61d7a371c62bcbbe882c3423aa4b8bf63485c248dd0f692997b8f0c3f6d0c6f",
               "osx-amd64": "29253d0288b8fbbac46baad6e5f6add6cb01d462c79f10805bbd4631c4cdf82c",
@@ -28,7 +30,7 @@ def rclone():
     dossier, win = TRAVAIL / "rclone", sys.platform == "win32"
     dossier.mkdir(parents=True, exist_ok=True)
     pieces = []
-    for cible in ("windows-amd64",) if win else ("osx-arm64", "osx-amd64"):
+    for cible in ("windows-amd64",) if win else PUCES:
         nom = f"rclone-{RCLONE}-{cible}"
         octets = _lire(f"{base}/{nom}.zip", 600)
         h = hashlib.sha256(octets).hexdigest()
@@ -38,7 +40,7 @@ def rclone():
             (dossier / cible).write_bytes(z.read(f"{nom}/rclone" + (".exe" if win else "")))
         pieces.append(str(dossier / cible))
     final = dossier / ("rclone.exe" if win else "rclone")
-    if win:
+    if len(pieces) == 1:
         os.replace(pieces[0], final)
     else:
         subprocess.run(["lipo", "-create", "-output", str(final), *pieces], check=True)
@@ -54,7 +56,7 @@ def principal():
             "--add-binary", f"{rclone()}{os.pathsep}.", "--add-data", f"{RACINE / 'THIRD_PARTY'}{os.pathsep}THIRD_PARTY"]
     if sys.platform == "darwin":
         args += ["--icon", str(ICONE / "SaveSpace.icns"), "--osx-bundle-identifier", "io.github.savespacedrive"]
-        args += ["--target-arch", os.environ["ARCH"]] if os.environ.get("ARCH") else []
+        args += ["--target-arch", ARCH] if ARCH else []
     else:
         args += ["--onefile", "--icon", str(ICONE / "SaveSpace.ico")]
     PyInstaller.__main__.run(args)
@@ -77,7 +79,7 @@ def mac():
     scene.mkdir(parents=True)
     subprocess.run(["ditto", str(app), str(scene / app.name)], check=True)
     (scene / "Applications").symlink_to("/Applications")  # glisser l'app sur ce raccourci = l'installer
-    dmg = DIST / f"SaveSpace-Drive-{VERSION}-mac.dmg"
+    dmg = DIST / f"SaveSpace-Drive-{VERSION}-mac{'-' + ARCH if ARCH in ('arm64', 'x86_64') else ''}.dmg"  # sans suffixe = universel
     dmg.unlink(missing_ok=True)
     subprocess.run(["hdiutil", "create", "-volname", NOM, "-srcfolder", str(scene), "-fs", "HFS+", "-format", "UDZO",
                     "-ov", str(dmg)], check=True)

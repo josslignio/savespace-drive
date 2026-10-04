@@ -40,7 +40,7 @@ def makeappx():
 
 def principal():
     valeurs = {cle: os.environ.get(var) or defaut for cle, (var, defaut) in IDENTITE.items()}
-    valeurs["VERSION"] = version_msix(os.environ.get("VERSION", "0.1.1"))
+    valeurs["VERSION"] = version_msix(os.environ.get("VERSION", "0.2.0"))
     for cle, (var, _) in IDENTITE.items():
         if "REMPLACER" in valeurs[cle]:
             print(f"ATTENTION : {var} absent — paquet construit avec un faux nom, refusé par le Store.")

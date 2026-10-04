@@ -15,6 +15,6 @@
 6. Seulement ensuite, si tu veux : **Mettre les doublons à la corbeille…**. La liste exacte s'affiche.
    Commence par un petit essai (réponds « Annuler » si la liste est longue). Après « Oui », ouvre la corbeille
    avec le lien affiché et restaure un fichier, pour voir que ça marche.
-7. Pour déconnecter : supprime le fichier `~/Library/Application Support/SaveSpace Drive/rclone.conf`. Retire aussi
-   l'accès sur https://myaccount.google.com/permissions (ligne « rclone »).
+7. Pour déconnecter : choisis le drive, puis clique « Déconnecter Google Drive » sous « Analyser ». Ensuite, clique le
+   lien « Retirer l'accès sur le site de Google Drive » qui s'affiche, puis retire « rclone » sur la page Google.
 8. Rapporte les chiffres des étapes 2 et 4 et ce qui t'a surpris. OneDrive et Dropbox se testent de la même façon.

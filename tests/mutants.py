@@ -23,8 +23,8 @@ MUTANTS = [  # (garantie, fichier, avant, après)
     ("drive : doublons par l'empreinte du service", "drives.py", "(f.get(\"Hashes\") or {}).get(h)", "f.get(\"Size\")"),
     ("drive : rien ne part sans le oui", "drives.py", "        return rep\n    if action == \"ranger\":",
      "        plans.get(\"drive:\" + cle) and ranger(cle, plans[\"drive:\" + cle])\n        return rep\n    if action == \"ranger\":"),
-    ("drive : pas de corbeille sans aperçu", "drives.py", "plans.pop(\"drive:\" + cle, None)",
-     "plans.pop(\"drive:\" + cle, None) or _groupes(_liste(cle), garder)"),
+    ("drive : pas de corbeille sans aperçu", "drives.py", "(plan := plans.pop(\"drive:\" + cle, None))",
+     "(plan := plans.pop(\"drive:\" + cle, None) or _groupes(_liste(cle), garder))"),
     ("drive : corbeille forcée (Google Drive)", "drives.py", "[\"--drive-use-trash=true\"]", "[]"),
     ("drive : corbeille forcée (OneDrive)", "drives.py", "[\"--onedrive-hard-delete=false\"]", "[]"),
     ("drive : réglages RCLONE_* du dehors ignorés", "drives.py", "if not k.startswith(\"RCLONE_\")", "if k"),
@@ -35,6 +35,9 @@ MUTANTS = [  # (garantie, fichier, avant, après)
     ("drive : jeton jamais affiché (erreur)", "drives.py", "ne répond pas (code {p.returncode})", "ne répond pas ({p.stderr})"),
     ("drive : jeton jamais affiché (connexion)", "drives.py", "    if p.returncode or type_de(cle) != type_:", "    print(p.stdout)\n    if p.returncode or type_de(cle) != type_:"),
     ("drive : dossier de config fermé aux autres", "drives.py", "conf().parent.chmod(0o700)", "conf().parent.chmod(0o755)"),
+    ("drive : déconnecter retire vraiment le compte", "drives.py", "_rclone(\"config\", \"delete\", cle, delai=60)", "None"),
+    ("drive : rclone de connexion tué à la fermeture", "app.py", "        drives.arreter()\n        super().server_close()", "        super().server_close()"),
+    ("drive : une 2e connexion remplace la 1re", "drives.py", "    arreter()  # une connexion", "    pass  # une connexion"),
 ]
 
 

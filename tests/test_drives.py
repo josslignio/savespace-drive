@@ -1,7 +1,7 @@
 """Drives : iCloud Drive (dossier local, fichiers pas téléchargés jamais ouverts) et Google Drive / OneDrive / Dropbox
 (rclone). Hermétique : HOME jetable, faux rclone (tests/faux_rclone.py) ou vrai rclone sur un remote alias LOCAL
 (remote_local.py). Aucun vrai compte n'est jamais touché."""
-import builtins, io, json, os, shutil, stat, subprocess, sys, types
+import builtins, io, json, os, shutil, stat, subprocess, sys, threading, time, types
 from pathlib import Path
 
 import pytest
@@ -117,11 +117,12 @@ def faux(maison, tmp_path, monkeypatch):
     d = tmp_path / "faux"
     d.mkdir()
     shutil.copy(FAUX, d / "faux_rclone.py")
-    exe, vrai_run = str(d / "faux_rclone.py"), subprocess.run
+    exe = str(d / "faux_rclone.py")
     monkeypatch.setenv("APPDATA", str(maison / "AppData" / "Roaming"))  # Windows : la config reste dans la maison jetable
     monkeypatch.setattr(drives, "rclone", lambda: exe)
     monkeypatch.setattr(drives, "subprocess", types.SimpleNamespace(  # le faux rclone est un script : lancé par Python
-        TimeoutExpired=subprocess.TimeoutExpired, run=lambda argv, **k: vrai_run([sys.executable, *argv] if argv[0] == exe else argv, **k)))
+        PIPE=subprocess.PIPE, TimeoutExpired=subprocess.TimeoutExpired, CompletedProcess=subprocess.CompletedProcess,
+        Popen=lambda argv, **k: subprocess.Popen([sys.executable, *argv] if argv[0] == exe else argv, **k)))
     etat = d / "rclone.json"
 
     def poser(cle="gdrive", type_="drive", **e):
@@ -249,6 +250,55 @@ def test_pas_connecte_pas_d_analyse(faux, ecran):
     drives.conf().unlink()
     assert "Connecte d'abord" in _post(s, "analyser", drive="gdrive")["texte"]
     assert _post(s, "analyser", drive="icloud-pirate")["erreur"]
+
+
+def test_deconnecter_sans_toucher_un_fichier(faux, ecran):
+    s, url = ecran
+    faux(fichiers=FICHIERS)
+    drives.conf().write_text(drives.conf().read_text() + "\n[dropbox]\ntype = dropbox\n")
+    rep = _post(s, "deconnecter", drive="gdrive")
+    assert rep.get("deconnecte") and rep["lien"] == "https://myaccount.google.com/permissions", rep
+    assert drives.type_de("gdrive") is None and drives.type_de("dropbox") == "dropbox", "seul ce drive est retiré"
+    assert '"gdrive": {"nom": "Google Drive", "ok": false}' in DIRECT.open(url, timeout=10).read().decode()
+    assert "Connecte d'abord" in _post(s, "analyser", drive="gdrive")["texte"]
+
+
+def _attendre(condition, delai=10):
+    fin = time.time() + delai
+    while not condition() and time.time() < fin:
+        time.sleep(0.05)
+    assert condition(), "état jamais atteint"
+
+
+def test_connexion_abandonnee_tuee_a_la_fermeture(faux, ecran, monkeypatch):
+    s, _ = ecran
+    faux(bloque=True)
+    monkeypatch.setattr(app, "ATTENTE", 0.05)
+    assert _post(s, "connecter", drive="gdrive") == {"en_cours": True}
+    _attendre(lambda: len(drives.EN_COURS) == 1)
+    (rclone_ouvert,) = drives.EN_COURS
+    try:
+        _post(s, "quitter")
+        s.server_close()  # ce que font app.principal et bureau.principal en sortant
+        assert rclone_ouvert.wait(timeout=5) is not None, "rclone de connexion resté ouvert après la fermeture"
+    finally:
+        rclone_ouvert.kill()  # même si le test est rouge, aucun faux rclone ne survit
+
+
+def test_deuxieme_connexion_remplace_la_premiere(faux):
+    faux(bloque=True)
+    fils = [threading.Thread(target=lambda: pytest.raises(drives.Refus, drives.connecter, "gdrive")) for _ in range(2)]
+    try:
+        fils[0].start()
+        _attendre(lambda: len(drives.EN_COURS) == 1)
+        (premier,) = drives.EN_COURS
+        fils[1].start()
+        assert premier.wait(timeout=5) is not None, "deux rclone de connexion en même temps (le port est déjà pris)"
+        _attendre(lambda: len(drives.EN_COURS) == 1 and drives.EN_COURS[0] is not premier)
+    finally:
+        drives.arreter()
+        for f in fils:
+            f.join(10)
 
 
 # ---- Vrai rclone (s'il est là) sur un remote alias LOCAL : aucun compte en ligne --------------------------------

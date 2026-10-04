@@ -35,9 +35,12 @@ jobs:
       - run: python -m pip install -e . pywebview pyinstaller pytest
       - name: Tests de l'écran et de la fenêtre
         run: python -m pytest -q tests/
-      - name: Construire SaveSpace Drive.app et le .dmg
+      - name: Construire le .dmg pour puce Apple (arm64)
         if: ${{ !cancelled() }}
-        run: python paquet/construire.py
+        run: ARCH=arm64 python paquet/construire.py
+      - name: Construire le .dmg pour Mac Intel (x86_64) et l'universel (secours d'install.sh) — Python universal2 requis
+        if: ${{ !cancelled() }}
+        run: ARCH=x86_64 python paquet/construire.py && ARCH=universal2 python paquet/construire.py
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
