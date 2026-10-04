@@ -1,0 +1,31 @@
+# SaveSpace Drive en application de bureau (APP2, branche app-grand-public)
+
+**Installer sur Mac, deux routes gratuites :** (1) la ligne Terminal `install.sh` (voir README) : télécharge le dernier .dmg des Releases avec curl, copie l'app dans /Applications (ou ~/Applications si /Applications n'est pas inscriptible), démonte, efface tout le reste ; un fichier reçu par curl ne porte pas la marque « quarantaine », donc aucun avertissement. (2) ouvrir `SaveSpace-Drive-<version>-mac.dmg`, glisser « SaveSpace Drive » sur Applications, puis « Ouvrir quand même » (ci-dessous). App universelle (puces Apple et Intel), 47 Mo installée.
+**Installer sur PC :** Microsoft Store (paquet .msix, signé par le Store : pas de SmartScreen) une fois publié ; sinon `SaveSpace-Drive-<version>-windows-installeur.exe` (aucun droit administrateur demandé), ou directement `SaveSpace Drive.exe` sans installer.
+
+**Premier lancement depuis le .dmg ou le .exe téléchargés par le navigateur : l'app n'est PAS signée, le système prévient une fois** (le clic droit → Ouvrir ne suffit plus depuis macOS 15).
+- Windows : écran bleu SmartScreen « Windows a protégé votre ordinateur » → « Informations complémentaires » → « Exécuter quand même ».
+- Mac : « Apple ne peut pas vérifier… » → Terminé ; Réglages Système → Confidentialité et sécurité → en bas « Ouvrir quand même » → confirmer (mot de passe du Mac).
+- **Décision du propriétaire (04/10) : rien de payant.** Pas de compte Apple Developer (99 $/an) ni de certificat Windows. À la place : la ligne Terminal sur Mac (aucun avertissement) et le Microsoft Store sur Windows (compte développeur individuel gratuit ; le Store re-signe le .msix). Plus tard, avec un historique de versions publiques : SignPath Foundation (signature Windows gratuite pour les logiciels libres).
+
+**Microsoft Store (.msix) :** `paquet/msix.py` (lancé par le workflow, job windows) emballe le .exe avec `paquet/AppxManifest.xml` et des logos PNG tirés de l'icône, via `makeappx.exe` du SDK Windows. Le .msix n'est **pas signé par nous** : il sert uniquement à la soumission au Store, qui le signe. L'identité vient de Partner Center → l'app → **Gestion du produit → Identité du produit** : `Package/Identity/Name` → variable du dépôt `MSIX_IDENTITY_NAME` ; `Package/Identity/Publisher` (« CN=… ») → `MSIX_PUBLISHER` ; `Package/Properties/PublisherDisplayName` → `MSIX_PUBLISHER_DISPLAY_NAME` (GitHub : Settings → Secrets and variables → Actions → Variables ; ou champs du lancement manuel). Sans elles, le paquet porte des valeurs `A-REMPLACER` que le Store refuse.
+
+**Le jour de la publication (propriétaire) :** dépôt fixé à `josslignio/savespace-drive` (04/10) — créer ce dépôt PUBLIC ; créer une Release GitHub avec le .dmg (et le .exe) en pièces jointes ; créer le compte Partner Center individuel, réserver le nom, renseigner les trois variables, lancer le workflow, soumettre le .msix (la capacité `runFullTrust` demande une courte justification : « application de bureau »).
+
+**Ce que c'est :** la même page qu'APP1, dans une vraie fenêtre (pywebview : WebKit sur Mac, Edge WebView2 sur Windows), empaquetée par PyInstaller. Aucune nouvelle logique de nettoyage. Un écran, une grande action : le chiffre « récupérables », trois cartes (doublons, gros fichiers, caches), une confirmation qui liste exactement ce qui bouge, « Annuler / restaurer » toujours visible en haut. Police du système, clair/sombre automatique, rien chargé depuis Internet. Inspiré de CleanMyMac (un chiffre, un bouton), Clean Me (catégories chiffrées), Czkawka (liste avant d'agir).
+Les outils externes (czkawka, rclone, osxphotos) sont facultatifs : la fenêtre n'utilise que l'analyse Python intégrée ; osxphotos est caché hors Mac.
+
+**Construire :** `python paquet/construire.py` (Mac : .app + .dmg dans `dist/`). Windows : `.github/workflows/build.yml` construit le .exe, l'installeur Inno Setup, le .msix (Store) et le .dmg sur une étiquette `v*` (artefacts, rien n'est publié).
+
+**Tests :** suite `tests/` verte ; le paquet Mac est essayé (lancement, fenêtre, arrêt propre) avant chaque version.
+Essai de fumée de l'app construite (`paquet/essai_fumee.py`), rejoué 12 fois : 12 sorties propres (code 0, aucun processus restant). Lancement depuis le .dmg monté puis « Quitter » du système : aucun processus restant. Une analyse en lecture seule de ~/Downloads : rien déplacé.
+Défauts trouvés par l'essai et corrigés : 35 s d'attente au lancement (recherche du nom de la machine) ; un processus fantôme si la fenêtre se ferme pendant le chargement (1 essai sur 9).
+Captures : `docs/captures/` (accueil, analyse en cours, résultat, confirmation, rangement fait ; clair et sombre), fenêtre réelle sur une maison de démo synthétique.
+
+**Pas encore fait :**
+- **Rien de Windows n'a jamais tourné** : ni le .exe, ni l'installeur, ni le .msix (`makeappx`), ni le workflow. Vérifié seulement : YAML lisible, manifeste XML bien formé, `paquet/msix.py --sans-makeappx` sur Mac (manifeste rempli, logos 44/50/150/310×150). Le Mac Intel n'a pas été essayé.
+- `install.sh` essayé pour de vrai sur le .dmg local (file:// et HTTP local imitant l'API GitHub), dans un dossier Applications d'essai : aucune marque quarantaine, app lancée par `open` sans fenêtre d'avertissement (témoin : la même app marquée « quarantaine » affiche l'avertissement), 2e passage identique à l'octet, repli ~/Applications, Ctrl-C et erreurs (URL, .dmg abîmé, app ouverte, pas de version) sans reste. Jamais essayé contre le vrai GitHub (rien n'est publié).
+- Pas de signature ni de notarisation (voir plus haut).
+- Pas de vraie barre de progression (roue + secondes écoulées) et pas d'arrêt d'une analyse en cours.
+- La carte « caches » informe seulement ; vider les caches reste en ligne de commande. Les gros fichiers sont listés, pas déplacés.
+- Fichier gardé dans la fenêtre : l'original (pas « Copie de », « copy », « (1) », « _1 »…, puis le moins profond, le nom le plus court). En ligne de commande, `doublons`/`range` gardent encore le 1er par ordre alphabétique (contrat figé par le juge dn2c).

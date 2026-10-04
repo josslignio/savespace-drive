@@ -1,0 +1,7 @@
+.context_venv/
+dist/
+build/
+__pycache__/
+*.egg-info/
+.DS_Store
+*.spec

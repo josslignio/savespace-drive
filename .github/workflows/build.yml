@@ -1,0 +1,76 @@
+# Construit l'app Mac (.dmg) et Windows (.exe + installeur + paquet .msix pour le Microsoft Store)
+# quand on pousse une étiquette v* (ex. v0.1.0). Rien n'est publié : les fichiers sont des « artefacts »
+# à télécharger depuis l'onglet Actions. Rien n'est signé par nous (zéro option payante) : voir docs/APP_BUREAU.md.
+# Identité Store du .msix : variables du dépôt MSIX_IDENTITY_NAME, MSIX_PUBLISHER, MSIX_PUBLISHER_DISPLAY_NAME
+# (Settings → Secrets and variables → Actions → Variables), ou champs ci-dessous en lancement manuel.
+name: Construire les apps
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      msix_identity_name:
+        description: "Partner Center : Package/Identity/Name (vide = variable du dépôt)"
+        required: false
+      msix_publisher:
+        description: "Partner Center : Package/Identity/Publisher, « CN=… » (vide = variable du dépôt)"
+        required: false
+      msix_publisher_display_name:
+        description: "Partner Center : Package/Properties/PublisherDisplayName (vide = variable du dépôt)"
+        required: false
+permissions:
+  contents: read
+env:
+  VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-essai' }}
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e . pywebview pyinstaller pytest
+      - name: Tests de l'écran et de la fenêtre
+        run: python -m pytest -q tests/
+      - name: Construire SaveSpace Drive.app et le .dmg
+        if: ${{ !cancelled() }}
+        run: python paquet/construire.py
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: SaveSpace-Drive-mac
+          path: dist/*.dmg
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e . pywebview pyinstaller pytest pillow
+      - name: Tests de l'écran et de la fenêtre
+        run: python -m pytest -q tests/
+      - name: Construire SaveSpace Drive.exe
+        if: ${{ !cancelled() }}
+        run: python paquet/construire.py
+      - name: Construire l'installeur (Inno Setup)
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DVersion=$($env:VERSION.TrimStart('v'))" paquet\windows.iss
+      - name: Paquet MSIX pour le Microsoft Store (non signé, le Store le signe)
+        if: ${{ !cancelled() }}
+        env:
+          MSIX_IDENTITY_NAME: ${{ inputs.msix_identity_name || vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ inputs.msix_publisher || vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ inputs.msix_publisher_display_name || vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: python paquet/msix.py
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: SaveSpace-Drive-windows
+          path: |
+            dist/*.exe
+            dist/*.msix
