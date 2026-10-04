@@ -1,12 +1,14 @@
 """Écran local (APP1) : une page servie sur 127.0.0.1 seulement ; rien ne sort de la machine.
 La même page s'affiche dans le navigateur (`savespace-drive app`) ou dans la fenêtre native (bureau.py, APP2).
 Aucune logique de nettoyage ici : Analyser = analyse.analyser (à blanc) ; Ranger = doublons.detecter puis
-quarantaine.mettre_en_quarantaine (manifeste, réversible) ; Annuler = quarantaine.restaure."""
+quarantaine.mettre_en_quarantaine (manifeste, réversible) ; Annuler = quarantaine.restaure.
+Où chercher : un dossier de l'ordinateur, iCloud Drive (dossier local : les fichiers pas téléchargés ne sont jamais
+ouverts), ou un drive en ligne (drives.py : liste et empreintes du service, corbeille du service)."""
 import contextlib, html, io, json, os, re, secrets, socketserver, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from savespace_drive import analyse, doctor, doublons, lisible, quarantaine
-from savespace_drive.chemins import Garde
+from savespace_drive import analyse, doctor, doublons, drives, lisible, quarantaine
+from savespace_drive.chemins import Garde, dans_le_nuage
 
 QUARANTAINE = "quarantaine"  # dossier « mis de côté », à l'intérieur du dossier choisi
 VERROU = threading.Lock()  # une action à la fois (elles changent le dossier courant du processus) : garde le démarrage
@@ -24,6 +26,19 @@ class Refus(Exception):
 def raccourcis():
     d_ = {"Videos": "Movies"} if sys.platform == "darwin" else {}  # Vidéos s'appelle Movies sur Mac
     return [(nom, str(Path.home() / d_.get(d, d))) for nom, d in RACCOURCIS if (Path.home() / d_.get(d, d)).is_dir()]
+
+
+def icloud():
+    """Le dossier iCloud Drive s'il existe sur cet ordinateur (Mac, ou iCloud pour Windows), sinon None."""
+    d = Path.home() / ("Library/Mobile Documents/com~apple~CloudDocs" if sys.platform == "darwin" else "iCloudDrive")
+    return str(d) if d.is_dir() else None
+
+
+def _au_nuage(p):
+    try:
+        return dans_le_nuage(p, os.stat(p))
+    except OSError:
+        return False
 
 
 def outils():
@@ -86,7 +101,8 @@ def analyser(dossier):
         "recuperables_octets": r["recuperables_octets"], "groupes": len(groupes),
         "doublons": [{"taille": T(g["taille"]), "garde": g["chemins"][0], "en_trop": g["chemins"][1:]} for g in groupes[:LISTE]],
         "gros": [[g["chemin"], T(g["taille"])] for g in r["gros"]],
-        "caches": len(r["caches"]), "caches_taille": T(caches), "proteges": len(r["proteges"])}}
+        "caches": len(r["caches"]), "caches_taille": T(caches), "proteges": len(r["proteges"]),
+        "nuage": r["nuage_seulement"]["fichiers"], "nuage_taille": T(r["nuage_seulement"]["octets"])}}
 
 
 def preparer(dossier):
@@ -109,6 +125,8 @@ def preparer(dossier):
 
 
 def ranger(dossier, plan):
+    if any(_au_nuage(dossier / c) for g in plan["groupes"] for c in g["membres"]):  # renvoyé au nuage depuis l'aperçu
+        raise Refus("Un fichier n'est plus téléchargé sur cet ordinateur depuis l'aperçu : rien n'a bougé. Analyse à nouveau.")
     with _dans(dossier) as erreurs:
         rc, deplaces, _ = quarantaine.mettre_en_quarantaine(plan, Garde([dossier]), QUARANTAINE)
     if rc:
@@ -177,6 +195,8 @@ class Ecran(BaseHTTPRequestHandler):
 
 def executer(srv, action, d):
     try:
+        if d.get("drive"):
+            return drives.executer(srv.plans, action, d["drive"], _original_d_abord, LISTE)
         dossier = dossier_valide(d.get("dossier"))
         if action == "analyser":
             return analyser(dossier)
@@ -191,7 +211,7 @@ def executer(srv, action, d):
         if action == "restaurer":
             return {"texte": restaurer(dossier), "restaure": True}
         raise Refus("Action inconnue.")
-    except Refus as e:
+    except (Refus, drives.Refus) as e:
         return {"texte": str(e), "erreur": True}
     except Exception as e:  # jamais de page muette : l'erreur est dite en clair
         return {"texte": f"Erreur inattendue : {e}", "erreur": True}
@@ -201,7 +221,12 @@ def page(jeton):
     puces = "".join(f'<button class="puce" data-c="{html.escape(c)}">{html.escape(nom)}</button>' for nom, c in raccourcis())
     trouves = [nom for nom, present in outils() if present]
     pied = "Outils en plus trouvés (facultatifs) : " + ", ".join(trouves) if trouves else ""
-    return PAGE.replace("{RACCOURCIS}", puces).replace("{OUTILS}", html.escape(pied)).replace("{JETON}", jeton)
+    lieux = [("mac", "Ce Mac" if sys.platform == "darwin" else "Ce PC")] + ([("icloud", "iCloud Drive")] if icloud() else []) \
+        + [(k, d[0]) for k, d in drives.DRIVES.items()]
+    lieux = "".join(f'<button class="puce lieu" data-l="{k}">{html.escape(nom)}</button>' for k, nom in lieux)
+    etat = json.dumps({**drives.etat(), "icloud": icloud()}, ensure_ascii=False).replace("</", "<\\/")
+    return (PAGE.replace("{RACCOURCIS}", puces).replace("{LIEUX}", lieux).replace("{OUTILS}", html.escape(pied))
+            .replace("{ETAT}", etat).replace("{JETON}", jeton))
 
 
 ICONE = ('<svg viewBox="0 0 64 64" width="88" height="88" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
@@ -230,6 +255,7 @@ header svg{width:24px;height:24px}header .nom{font-weight:600;flex:1}
 main{flex:1;width:100%;max-width:980px;margin:0 auto;padding:22px 24px}
 .dossiers{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .puce{padding:7px 15px;border-radius:999px;background:var(--carte);box-shadow:0 0 0 1px var(--trait)}
+#lieux{margin-bottom:10px;align-items:center}.ou{color:var(--doux);font-size:13px;margin-right:4px}
 .puce:hover:not(:disabled){box-shadow:0 0 0 1px var(--accent)}.puce.choisie{background:var(--accent);color:#fff;box-shadow:none}
 #saisie{display:block;margin:10px auto 0;width:min(520px,100%);font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--trait);background:var(--carte);color:var(--texte)}
 #chemin{text-align:center;color:var(--doux);font-size:12px;margin-top:8px;min-height:1.2em;word-break:break-all}
@@ -266,13 +292,15 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <button class="bouton2" id="restaurer" title="Remet à leur place d'origine les fichiers mis de côté dans ce dossier">
 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Annuler / restaurer</button></header>
 <main>
+<div class="dossiers" id="lieux"><span class="ou">Où chercher ?</span>{LIEUX}</div>
 <div class="dossiers" id="dossiers">{RACCOURCIS}<button class="puce" id="autre">Autre dossier…</button></div>
 <input id="saisie" hidden placeholder="Colle ici le chemin d'un dossier, puis appuie sur Entrée">
 <div id="chemin"></div>
 <section class="heros"><div id="logo">{ICONE}</div><div class="roue" id="roue" hidden></div>
 <div class="coche" id="coche" hidden><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
 <div class="chiffre" id="chiffre" hidden></div><h1 id="titre"></h1><p class="sous" id="sous"></p>
-<button class="principal" id="principal">Analyser</button><button class="lien" id="lien" hidden></button></section>
+<button class="principal" id="principal">Analyser</button><button class="lien" id="lien" hidden></button>
+<a class="lien" id="ext" target="_blank" rel="noopener" hidden></a></section>
 <div id="message" hidden></div>
 <section class="cartes" id="cartes" hidden>
 <div class="carte" id="c-doublons"><div class="ico" style="background:#0a84ff"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg></div>
@@ -280,7 +308,7 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <div class="carte" id="c-gros"><div class="ico" style="background:#ff9f0a"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></div>
 <h2>Gros fichiers</h2><div class="valeur"></div><p></p><details><summary>Voir la liste</summary><div class="liste"></div></details></div>
 <div class="carte" id="c-caches"><div class="ico" style="background:#bf5af2"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"/></svg></div>
-<h2>Caches et journaux</h2><div class="valeur"></div><p></p><details><summary>Voir la liste</summary><div class="liste"></div></details></div>
+<h2 id="t-caches">Caches et journaux</h2><div class="valeur"></div><p></p><details><summary>Voir la liste</summary><div class="liste"></div></details></div>
 </section><div id="note"></div>
 </main>
 <footer><span>Tout se passe sur ton ordinateur : rien n'est envoyé sur Internet.</span><span>{OUTILS}</span><button class="lien" id="quitter" style="margin:0;font-size:inherit">Quitter</button></footer>
@@ -289,20 +317,27 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <div class="actions"><button class="bouton2" id="f-non">Annuler</button><button class="principal" id="f-oui"></button></div></div></div>
 <script>
 const J="{JETON}",$=i=>document.getElementById(i),n=(k,m)=>k+" "+m+(k>1?"s":"");
+const E={ETAT};let lieu="mac",drive="";
+const ICLOUD="iCloud Drive va être examiné. Les fichiers restés dans le nuage ne sont pas téléchargés : ils sont seulement comptés. Attention : mettre un fichier de côté ici le retire aussi de tous tes appareils (iPhone, iPad…) ; il reste dans « quarantaine » et revient avec « Annuler / restaurer ».";
 let dossier="",nom="",suite=null,suiteLien=null,chrono=null,dernier=null,vue=null,natif=false;
 function msg(t,genre){$("message").textContent=t||"";$("message").className=genre||"";$("message").hidden=!t}
 function heros(o){for(const i of["logo","roue","coche"])$(i).hidden=o.icone!==i;
  $("chiffre").hidden=!o.chiffre;$("chiffre").textContent=o.chiffre||"";$("titre").textContent=o.titre||"";$("sous").textContent=o.sous||"";
  $("principal").hidden=!o.bouton;$("principal").textContent=o.bouton||"";$("principal").disabled=false;suite=o.action;
- $("lien").hidden=!o.lien;$("lien").textContent=o.lien||"";suiteLien=o.actionLien}
+ $("lien").hidden=!o.lien;$("lien").textContent=o.lien||"";suiteLien=o.actionLien;
+ $("ext").hidden=!o.ext;$("ext").href=o.ext||"#";$("ext").textContent=o.extTexte||""}
 function bloque(oui){document.querySelectorAll(".puce,#restaurer").forEach(b=>b.disabled=oui)}
 function accueil(){vue=accueil;$("cartes").hidden=true;$("note").textContent="";
- heros({icone:"logo",titre:"Retrouve de la place",sous:dossier?"Le dossier « "+nom+" » va être examiné. Analyser regarde seulement : rien ne bouge sans ton accord.":"Choisis d'abord un dossier ci-dessus.",bouton:"Analyser",action:analyser});
+ if(drive){const D=E[drive];
+  if(!E.rclone)return heros({icone:"logo",titre:D.nom,sous:"Pour "+D.nom+", SaveSpace Drive utilise le moteur gratuit rclone : il est inclus dans l'app téléchargée, mais introuvable ici."});
+  if(!D.ok)return heros({icone:"logo",titre:"Connecte "+D.nom,sous:"Ton navigateur va s'ouvrir sur la page de connexion de "+D.nom+" : SaveSpace Drive ne voit jamais ton mot de passe. Ensuite, l'analyse lit seulement la liste de tes fichiers : rien n'est téléchargé.",bouton:"Connecter "+D.nom,action:connecter});
+  return heros({icone:"logo",titre:"Retrouve de la place sur "+D.nom,sous:"Analyser lit seulement la liste de tes fichiers et leurs empreintes : rien n'est téléchargé, rien ne bouge.",bouton:"Analyser",action:analyser})}
+ heros({icone:"logo",titre:"Retrouve de la place",sous:!dossier?"Choisis d'abord un dossier ci-dessus.":lieu==="icloud"?ICLOUD:"Le dossier « "+nom+" » va être examiné. Analyser regarde seulement : rien ne bouge sans ton accord.",bouton:"Analyser",action:analyser});
  $("principal").disabled=!dossier}
-function travail(titre){const t0=Date.now();$("cartes").hidden=true;$("note").textContent="";msg("");bloque(true);
+function travail(titre,attente){const t0=Date.now();$("cartes").hidden=true;$("note").textContent="";msg("");bloque(true);
  heros({icone:"roue",titre,sous:"Rien n'est modifié pendant ce temps."});clearInterval(chrono);
- chrono=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);if(s>=4)$("sous").textContent="Un gros dossier peut prendre quelques minutes… "+s+" s"},1000)}
-async function appel(a){const post=x=>fetch("/"+x,{method:"POST",headers:{"X-Jeton":J,"Content-Type":"application/json"},body:JSON.stringify({dossier})}).then(r=>r.json());
+ chrono=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);if(s>=4)$("sous").textContent=(attente||(drive?"Un grand drive peut prendre quelques minutes…":"Un gros dossier peut prendre quelques minutes…"))+" "+s+" s"},1000)}
+async function appel(a){const post=x=>fetch("/"+x,{method:"POST",headers:{"X-Jeton":J,"Content-Type":"application/json"},body:JSON.stringify({dossier,drive})}).then(r=>r.json());
  try{let d=await post(a);while(d.en_cours){await new Promise(f=>setTimeout(f,800));d=await post("suivre")}return d}
  catch(e){return{texte:"SaveSpace Drive ne répond plus. Ferme la fenêtre et relance-le.",erreur:true}}
  finally{clearInterval(chrono);bloque(false)}}
@@ -312,30 +347,43 @@ function carte(id,valeur,texte,ls){const c=$(id);c.querySelector(".valeur").text
  const det=c.querySelector("details");det.open=false;det.hidden=!ls.length;lignes(c.querySelector(".liste"),ls)}
 function groupes(gs,total){const ls=gs.flatMap(g=>[["On garde : "+g.garde,g.taille,"garde"],...g.en_trop.map(c=>["en trop : "+c,"","trop"])]);
  if(total>gs.length)ls.push(["… et "+n(total-gs.length,"autre groupe"),""]);return ls}
-function resultat(r){vue=()=>resultat(r);dernier=r;
- if(r.recuperables_octets>0)heros({chiffre:r.recuperables,titre:"récupérables",sous:"en rangeant les doublons de « "+nom+" » ("+r.total+" analysés).",bouton:"Ranger les doublons…",action:preparer,lien:"Analyser à nouveau",actionLien:analyser});
- else heros({icone:"coche",titre:"Aucun doublon ici",sous:"« "+nom+" » ("+r.total+") est déjà en ordre. Jette un œil aux plus gros fichiers ci-dessous.",bouton:"Analyser à nouveau",action:analyser});
+function resultat(r){vue=()=>resultat(r);dernier=r;const D=r.drive,esp=r.espace?" "+r.espace+".":"";
+ if(r.recuperables_octets>0)heros({chiffre:r.recuperables,titre:"récupérables",sous:D?"en mettant les doublons de "+D+" à la corbeille."+esp:"en rangeant les doublons de « "+nom+" » ("+r.total+" analysés).",bouton:D?"Mettre les doublons à la corbeille…":"Ranger les doublons…",action:preparer,lien:"Analyser à nouveau",actionLien:analyser});
+ else heros({icone:"coche",titre:"Aucun doublon ici",sous:(D?D+" ("+r.total+") est déjà en ordre."+esp:"« "+nom+" » ("+r.total+") est déjà en ordre.")+" Jette un œil aux plus gros fichiers ci-dessous.",bouton:"Analyser à nouveau",action:analyser});
  $("cartes").hidden=false;
- carte("c-doublons",r.groupes?r.recuperables:"Aucun",r.groupes?n(r.groupes,"groupe")+" de fichiers identiques. On garde un exemplaire de chacun, le reste est mis de côté.":"Pas de fichier en double dans ce dossier.",groupes(r.doublons,r.groupes));
+ carte("c-doublons",r.groupes?r.recuperables:"Aucun",r.groupes?n(r.groupes,"groupe")+" de fichiers identiques. On garde un exemplaire de chacun, le reste "+(D?"va dans la corbeille de "+D+".":"est mis de côté."):"Pas de fichier en double ici.",groupes(r.doublons,r.groupes));
  carte("c-gros",r.gros.length?r.gros[0][1]:"Aucun",r.gros.length?"pour le plus gros. Voici les plus lourds, à trier toi-même : on n'y touche pas.":"Ce dossier est vide.",r.gros);
- carte("c-caches",r.caches?r.caches_taille:"Aucun",r.caches?n(r.caches,"fichier")+" de cache ou de journal. Ils se recréent tout seuls quand une app en a besoin.":"Pas de cache ni de journal dans ce dossier.",[]);
- $("note").textContent=r.proteges?n(r.proteges,"fichier")+" sensibles (clés, .git) ignorés : on n'y touche jamais.":""}
+ $("t-caches").textContent=D?"Corbeille et autres":"Caches et journaux";
+ if(D)carte("c-caches",r.corbeille,"déjà dans la corbeille de "+D+" : la vider sur son site libère cette place."+(r.autres?" Google Photos et Gmail occupent "+r.autres+" : rapport seulement, on n'y touche pas.":""),[]);
+ else carte("c-caches",r.caches?r.caches_taille:"Aucun",r.caches?n(r.caches,"fichier")+" de cache ou de journal. Ils se recréent tout seuls quand une app en a besoin.":"Pas de cache ni de journal dans ce dossier.",[]);
+ $("note").textContent=[r.nuage?n(r.nuage,"fichier")+" dans le nuage seulement ("+r.nuage_taille+") : pas téléchargés, donc pas examinés.":"",r.proteges?n(r.proteges,"fichier")+" sensibles (clés, .git) ignorés : on n'y touche jamais.":""].filter(Boolean).join(" ")}
+async function connecter(){travail("Connexion à "+nom+"…","Termine la connexion dans ton navigateur, puis reviens ici.");$("sous").textContent="Termine la connexion dans ton navigateur, puis reviens ici.";
+ const d=await appel("connecter");if(!d.erreur)E[drive].ok=true;accueil();msg(d.texte,d.erreur?"erreur":"info")}
 async function analyser(){travail("Analyse de « "+nom+" »…");const d=await appel("analyser");if(d.erreur){accueil();return msg(d.texte,"erreur")}resultat(d.resultat)}
 async function preparer(){travail("Préparation de la liste exacte…");const d=await appel("preparer");vue();
  if(d.erreur)return msg(d.texte,"erreur");if(!d.confirmer)return msg(d.texte,"info");
- $("f-titre").textContent="Ranger "+n(d.nombre,"fichier")+" en trop ?";
- $("f-texte").textContent=d.taille+" iront dans le dossier « "+d.quarantaine+" », à l'intérieur de « "+nom+" ». Rien n'est effacé : « Annuler / restaurer » remet tout en place quand tu veux.";
- lignes($("f-liste"),groupes(d.plan,d.groupes));$("f-oui").textContent="Oui, ranger "+n(d.nombre,"fichier");$("voile").hidden=false;$("f-non").focus()}
+ const D=d.drive;$("f-titre").textContent=D?"Mettre "+n(d.nombre,"fichier")+" à la corbeille de "+D+" ?":"Ranger "+n(d.nombre,"fichier")+" en trop ?";
+ $("f-texte").textContent=D?d.taille+" iront dans la corbeille de "+D+". Tu peux les récupérer depuis cette corbeille pendant 30 jours : rien n'est effacé définitivement."
+  :d.taille+" iront dans le dossier « "+d.quarantaine+" », à l'intérieur de « "+nom+" ». Rien n'est effacé : « Annuler / restaurer » remet tout en place quand tu veux."
+  +(lieu==="icloud"?" Attention, c'est iCloud Drive : ces fichiers disparaissent aussi de tes autres appareils (iPhone, iPad…) tant que tu ne les restaures pas.":"");
+ lignes($("f-liste"),groupes(d.plan,d.groupes));$("f-oui").textContent=D?"Oui, mettre "+n(d.nombre,"fichier")+" à la corbeille":"Oui, ranger "+n(d.nombre,"fichier");$("voile").hidden=false;$("f-non").focus()}
 function fermer(){$("voile").hidden=true}
 async function ranger(){fermer();travail("Rangement en cours…");const d=await appel("ranger");
  if(d.erreur){vue();return msg(d.texte,"erreur")}vue=()=>{};$("cartes").hidden=true;
- heros({icone:"coche",titre:"C'est fait",sous:d.texte.replace(/^C'est fait : /,""),bouton:"Analyser à nouveau",action:analyser,lien:"Annuler ce rangement",actionLien:restaurer})}
-async function restaurer(){if(!dossier)return msg("Choisis d'abord un dossier.","erreur");const avant=vue;travail("Remise en place…");const d=await appel("restaurer");
+ heros({icone:"coche",titre:"C'est fait",sous:d.texte.replace(/^C'est fait : /,""),bouton:"Analyser à nouveau",action:analyser,lien:drive?"":"Annuler ce rangement",actionLien:restaurer,ext:d.lien,extTexte:d.lien_texte})}
+async function restaurer(){if(!dossier&&!drive)return msg("Choisis d'abord un dossier.","erreur");const avant=vue;travail("Remise en place…");const d=await appel("restaurer");
  if(d.erreur){(avant||accueil)();return msg(d.texte,"erreur")}vue=accueil;$("cartes").hidden=true;
+ if(drive)return heros({icone:"logo",titre:"Récupérer depuis la corbeille",sous:d.texte,bouton:"Analyser",action:analyser,ext:d.lien,extTexte:d.lien_texte});
  heros({icone:"coche",titre:"Tout est revenu",sous:d.texte.replace(/^C'est fait : /,""),bouton:"Analyser à nouveau",action:analyser})}
 function choisir(c){c=(c||"").trim();if(!c)return;dossier=c;const raccourci=document.querySelector('.puce[data-c="'+CSS.escape(c)+'"]');
  nom=raccourci?raccourci.textContent:c.split(/[\\/]/).filter(Boolean).pop()||c;$("chemin").textContent=raccourci?"":c;
- document.querySelectorAll(".puce").forEach(b=>b.classList.toggle("choisie",b===raccourci||(b.id==="autre"&&!raccourci)));msg("");accueil()}
+ document.querySelectorAll("#dossiers .puce").forEach(b=>b.classList.toggle("choisie",b===raccourci||(b.id==="autre"&&!raccourci)));msg("");accueil()}
+function choisirLieu(l){lieu=l;drive="";document.querySelectorAll(".lieu").forEach(b=>b.classList.toggle("choisie",b.dataset.l===l));
+ $("dossiers").hidden=l!=="mac";$("saisie").hidden=true;$("chemin").textContent="";msg("");
+ if(l==="mac"){const p=document.querySelector(".puce[data-c]");if(p)return choisir(p.dataset.c);dossier="";return accueil()}
+ if(l==="icloud"){dossier=E.icloud;nom="iCloud Drive";return accueil()}
+ dossier="";drive=l;nom=E[l].nom;accueil()}
+document.querySelectorAll(".lieu").forEach(b=>b.onclick=()=>choisirLieu(b.dataset.l));
 document.querySelectorAll(".puce[data-c]").forEach(b=>b.onclick=()=>{$("saisie").hidden=true;choisir(b.dataset.c)});
 $("autre").onclick=async()=>{if(natif){const c=await window.pywebview.api.choisir();if(c)choisir(c)}else{$("saisie").hidden=false;$("saisie").focus()}};
 $("saisie").onchange=()=>choisir($("saisie").value);
@@ -344,7 +392,7 @@ $("f-non").onclick=()=>{fermer();msg("Rien n'a bougé.","info")};$("f-oui").oncl
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("voile").hidden)$("f-non").click()});
 $("quitter").onclick=async()=>{await fetch("/quitter",{method:"POST",headers:{"X-Jeton":J}}).catch(()=>0);document.body.replaceChildren();document.body.append("SaveSpace Drive est fermé. Tu peux fermer cet onglet.")};
 window.addEventListener("pywebviewready",()=>{natif=true;$("quitter").hidden=true});
-const premiere=document.querySelector(".puce[data-c]");premiere?choisir(premiere.dataset.c):accueil();
+choisirLieu("mac");
 </script></html>""".replace("{ICONE}", ICONE)
 
 

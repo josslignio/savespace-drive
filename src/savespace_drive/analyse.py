@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from savespace_drive.chemins import dans_le_nuage
 
 
 def _refuser(message):
@@ -48,13 +49,17 @@ def _empreinte(chemin):
 def analyser(racine, top):
     """Parcourt racine en lecture seule ; renvoie le rapport (chemins relatifs str)."""
     fichiers = []  # (chemin_relatif, taille, sha256 ou None si protégé : jamais groupé)
+    nuage = [0, 0]  # pas téléchargés (iCloud Drive…) : comptés à part, jamais ouverts (les lire remplirait le disque)
     for dossier, sous_dossiers, noms in os.walk(racine):
         sous_dossiers[:] = sorted(sous_dossiers)
         for nom in sorted(noms):
             brut = Path(dossier) / nom
             try:
-                taille = brut.stat().st_size
-                relatif = brut.relative_to(racine).as_posix()
+                st = brut.stat()
+                taille, relatif = st.st_size, brut.relative_to(racine).as_posix()
+                if dans_le_nuage(brut, st):
+                    nuage[0], nuage[1] = nuage[0] + 1, nuage[1] + taille
+                    continue
                 empreinte = None if _protege(relatif) else _empreinte(brut)
             except OSError:
                 continue  # illisible : ignoré — l'analyse à blanc n'écrit ni ne s'arrête
@@ -79,6 +84,7 @@ def analyser(racine, top):
         "gros": [{"chemin": chemin, "taille": taille} for chemin, taille, _ in gros],
         "caches": sorted(chemin for chemin, _, _ in fichiers if _cache(chemin)),
         "proteges": sorted(chemin for chemin, _, _ in fichiers if _protege(chemin)),
+        "nuage_seulement": {"fichiers": nuage[0], "octets": nuage[1]},
     }
 
 

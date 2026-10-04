@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from .chemins import Garde, RefusChemin
+from .chemins import Garde, RefusChemin, dans_le_nuage
 
 def _empreinte(chemin):
     with open(chemin, "rb") as entree:
@@ -21,9 +21,12 @@ def _balayer(racine, garde):
             brut = Path(dossier) / nom
             try:
                 garde.verifier(brut)
-                taille = brut.stat().st_size
+                st = brut.stat()
             except (OSError, RefusChemin):
                 continue
+            if dans_le_nuage(brut, st):
+                continue  # pas téléchargé : le lire le téléchargerait
+            taille = st.st_size
             if taille == 0:
                 vides += 1
                 continue

@@ -45,6 +45,8 @@ def analyse(r, limite=20):
         l += ["", "Les plus gros fichiers :"] + [f"  {taille(g['taille']):>10}  {court(g['chemin'])}" for g in r["gros"]]
     if r["caches"]:
         l += ["", f"{n(len(r['caches']), 'fichier')} de cache ou de journal repérés."]
+    if (nu := r.get("nuage_seulement", {})).get("fichiers"):
+        l += ["", f"{n(nu['fichiers'], 'fichier')} dans le nuage seulement ({taille(nu['octets'])}) : pas téléchargés, donc pas examinés."]
     if r["proteges"]:
         l += ["", f"{n(len(r['proteges']), 'fichier')} sensibles (clés, .git) ignorés : on n'y touche jamais."]
     return "\n".join(l + ["", "Rien n'a été modifié : c'est seulement une analyse."])

@@ -75,6 +75,7 @@ def test_differences_mac_windows(maison, monkeypatch, plateforme, videos, osxpho
     (maison / "Movies").mkdir()
     (maison / "Videos").mkdir()
     monkeypatch.setattr(sys, "platform", plateforme)
+    monkeypatch.setattr(app.drives, "rclone", lambda: None)  # shutil.which ne sait pas faire semblant d'être sous Windows
     monkeypatch.setattr(app.doctor, "examiner", lambda: {"outils": {n: {"present": True} for n in ("czkawka_cli", "osxphotos", "rclone")}})
     assert dict(app.raccourcis())["Vidéos"] == str(maison / videos)
     assert ("osxphotos" in dict(app.outils())) is osxphotos and "rclone" in dict(app.outils())
