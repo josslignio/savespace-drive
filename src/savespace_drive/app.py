@@ -3,11 +3,12 @@ La même page s'affiche dans le navigateur (`savespace-drive app`) ou dans la fe
 Aucune logique de nettoyage ici : Analyser = analyse.analyser (à blanc) ; Ranger = doublons.detecter puis
 quarantaine.mettre_en_quarantaine (manifeste, réversible) ; Annuler = quarantaine.restaure.
 Où chercher : un dossier de l'ordinateur, iCloud Drive (dossier local : les fichiers pas téléchargés ne sont jamais
-ouverts), ou un drive en ligne (drives.py : liste et empreintes du service, corbeille du service)."""
+ouverts), ou un drive en ligne (drives.py : liste et empreintes du service, corbeille du service).
+Ranger en dossiers = rangement.py (liste seulement, déplacements journalisés, annulables)."""
 import contextlib, html, io, json, os, re, secrets, socketserver, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from savespace_drive import analyse, doctor, doublons, drives, lisible, quarantaine
+from savespace_drive import analyse, doctor, doublons, drives, lisible, quarantaine, rangement
 from savespace_drive.chemins import Garde, dans_le_nuage
 
 QUARANTAINE = "quarantaine"  # dossier « mis de côté », à l'intérieur du dossier choisi
@@ -180,13 +181,13 @@ class Ecran(BaseHTTPRequestHandler):
         else:
             with VERROU:
                 if action != "suivre" and not (srv.fil and srv.fil.is_alive()):
-                    srv.rep, srv.fil = None, threading.Thread(target=lambda: setattr(srv, "rep", executer(srv, action, d)), daemon=True)
+                    srv.rep, srv.progres, srv.fil = None, None, threading.Thread(target=lambda: setattr(srv, "rep", executer(srv, action, d)), daemon=True)
                     srv.fil.start()
                 elif action != "suivre":
                     return self._json({"texte": "Une action est déjà en cours : attends qu'elle se termine.", "erreur": True})
             if srv.fil:
                 srv.fil.join(ATTENTE)
-            rep = {"en_cours": True} if srv.fil and srv.fil.is_alive() else (srv.rep or {"texte": "Rien en cours.", "erreur": True})
+            rep = {"en_cours": True, **({"progres": srv.progres} if srv.progres else {})} if srv.fil and srv.fil.is_alive() else (srv.rep or {"texte": "Rien en cours.", "erreur": True})
         self._json(rep)
 
     def _json(self, rep):
@@ -195,6 +196,8 @@ class Ecran(BaseHTTPRequestHandler):
 
 def executer(srv, action, d):
     try:
+        if action.startswith("rangement_"):
+            return rangement.executer(srv, action, d, dossier_valide)
         if d.get("drive"):
             return drives.executer(srv.plans, action, d["drive"], _original_d_abord, LISTE)
         dossier = dossier_valide(d.get("dossier"))
@@ -282,10 +285,13 @@ summary{cursor:pointer;color:var(--accent);font-size:13px;margin-top:10px}
 .liste div{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--trait);overflow-wrap:anywhere}
 .liste .t{margin-left:auto;color:var(--doux);white-space:nowrap}.liste .garde{font-weight:600}.liste .trop{color:var(--doux);padding-left:12px}
 #note{text-align:center;color:var(--doux);font-size:12px;margin-top:14px}
-#voile{position:fixed;inset:0;background:rgba(0,0,0,.38);display:grid;place-items:center;padding:24px;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#voile,#voile2{position:fixed;inset:0;background:rgba(0,0,0,.38);display:grid;place-items:center;padding:24px;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .feuille{background:var(--carte);border-radius:16px;max-width:580px;width:100%;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35);max-height:86vh;display:flex;flex-direction:column}
 .feuille h1{margin-top:0}.feuille .liste{max-height:none;flex:1;border-bottom:1px solid var(--trait)}
 .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.actions .principal{margin:0;padding:9px 22px;font-size:15px}
+.outils{display:flex;gap:6px;flex:none}.mini{white-space:nowrap;font:inherit;font-size:12px;padding:3px 9px;border-radius:6px;background:var(--carte);box-shadow:0 0 0 1px var(--trait);color:var(--texte);border:0}
+input.mini{flex:1;min-width:0;box-shadow:0 0 0 1px var(--accent)}select.mini{max-width:150px}.liste .nomd{font-weight:600;flex:1;min-width:0}.liste .sousd{padding-left:18px;color:var(--doux)}
+#r-ex{max-height:150px;flex:none}#r-note{font-size:12.5px;margin:8px 0 0;max-width:none}
 footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 </style>
 <header>{ICONE}<span class="nom">SaveSpace Drive</span>
@@ -299,7 +305,7 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <section class="heros"><div id="logo">{ICONE}</div><div class="roue" id="roue" hidden></div>
 <div class="coche" id="coche" hidden><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
 <div class="chiffre" id="chiffre" hidden></div><h1 id="titre"></h1><p class="sous" id="sous"></p>
-<button class="principal" id="principal">Analyser</button><button class="lien" id="lien" hidden></button>
+<button class="principal" id="principal">Analyser</button><button class="lien" id="lien" hidden></button><button class="lien" id="arbre" hidden></button>
 <a class="lien" id="ext" target="_blank" rel="noopener" hidden></a></section>
 <div id="message" hidden></div>
 <section class="cartes" id="cartes" hidden>
@@ -315,30 +321,36 @@ footer{text-align:center;color:var(--doux);font-size:11.5px;padding:14px 20px;di
 <div id="voile" hidden><div class="feuille" role="dialog" aria-modal="true" aria-labelledby="f-titre">
 <h1 id="f-titre"></h1><p class="sous" id="f-texte" style="margin:0 0 14px;max-width:none"></p><div class="liste" id="f-liste"></div>
 <div class="actions"><button class="bouton2" id="f-non">Annuler</button><button class="principal" id="f-oui"></button></div></div></div>
+<div id="voile2" hidden><div class="feuille" role="dialog" aria-modal="true" aria-labelledby="r-titre">
+<h1 id="r-titre"></h1><p class="sous" id="r-texte" style="margin:0 0 10px;max-width:none"></p><div class="liste" id="r-arbre"></div>
+<details id="r-det"><summary>Exemples de déplacements</summary><div class="liste" id="r-ex"></div></details><p class="sous" id="r-note"></p>
+<div class="actions"><button class="lien" id="r-defaire" hidden style="margin:0 auto 0 0"></button><button class="bouton2" id="r-non">Annuler</button><button class="principal" id="r-oui"></button></div></div></div>
 <script>
 const J="{JETON}",$=i=>document.getElementById(i),n=(k,m)=>k+" "+m+(k>1?"s":"");
 const E={ETAT};let lieu="mac",drive="";
 const ICLOUD="iCloud Drive va être examiné. Les fichiers restés dans le nuage ne sont pas téléchargés : ils sont seulement comptés. Attention : mettre un fichier de côté ici le retire aussi de tous tes appareils (iPhone, iPad…) ; il reste dans « quarantaine » et revient avec « Annuler / restaurer ».";
-let dossier="",nom="",suite=null,suiteLien=null,chrono=null,dernier=null,vue=null,natif=false;
+let dossier="",nom="",suite=null,suiteLien=null,chrono=null,dernier=null,vue=null,natif=false,prog=null,rplan=null,encore=false,ouiR=null;
 function msg(t,genre){$("message").textContent=t||"";$("message").className=genre||"";$("message").hidden=!t}
 function heros(o){for(const i of["logo","roue","coche"])$(i).hidden=o.icone!==i;
  $("chiffre").hidden=!o.chiffre;$("chiffre").textContent=o.chiffre||"";$("titre").textContent=o.titre||"";$("sous").textContent=o.sous||"";
  $("principal").hidden=!o.bouton;$("principal").textContent=o.bouton||"";$("principal").disabled=false;suite=o.action;
  $("lien").hidden=!o.lien;$("lien").textContent=o.lien||"";suiteLien=o.actionLien;
- $("ext").hidden=!o.ext;$("ext").href=o.ext||"#";$("ext").textContent=o.extTexte||""}
+ $("ext").hidden=!o.ext;$("ext").href=o.ext||"#";$("ext").textContent=o.extTexte||"";$("arbre").hidden=true}
+function montrerArbre(){$("arbre").hidden=!(dossier||(drive&&E[drive].ok&&E.rclone));
+ $("arbre").textContent=drive||lieu==="icloud"?"Ranger "+nom+" en dossiers…":"Ranger « "+nom+" » en dossiers…"}
 function bloque(oui){document.querySelectorAll(".puce,#restaurer").forEach(b=>b.disabled=oui)}
 function accueil(){vue=accueil;$("cartes").hidden=true;$("note").textContent="";
  if(drive){const D=E[drive];
   if(!E.rclone)return heros({icone:"logo",titre:D.nom,sous:"Pour "+D.nom+", SaveSpace Drive utilise le moteur gratuit rclone : il est inclus dans l'app téléchargée, mais introuvable ici."});
   if(!D.ok)return heros({icone:"logo",titre:"Connecte "+D.nom,sous:"Ton navigateur va s'ouvrir sur la page de connexion de "+D.nom+" : SaveSpace Drive ne voit jamais ton mot de passe. Ensuite, l'analyse lit seulement la liste de tes fichiers : rien n'est téléchargé.",bouton:"Connecter "+D.nom,action:connecter});
-  return heros({icone:"logo",titre:"Retrouve de la place sur "+D.nom,sous:"Analyser lit seulement la liste de tes fichiers et leurs empreintes : rien n'est téléchargé, rien ne bouge.",bouton:"Analyser",action:analyser,lien:"Déconnecter "+D.nom,actionLien:deconnecter})}
+  heros({icone:"logo",titre:"Retrouve de la place sur "+D.nom,sous:"Analyser lit seulement la liste de tes fichiers et leurs empreintes : rien n'est téléchargé, rien ne bouge.",bouton:"Analyser",action:analyser,lien:"Déconnecter "+D.nom,actionLien:deconnecter});return montrerArbre()}
  heros({icone:"logo",titre:"Retrouve de la place",sous:!dossier?"Choisis d'abord un dossier ci-dessus.":lieu==="icloud"?ICLOUD:"Le dossier « "+nom+" » va être examiné. Analyser regarde seulement : rien ne bouge sans ton accord.",bouton:"Analyser",action:analyser});
- $("principal").disabled=!dossier}
-function travail(titre,attente){const t0=Date.now();$("cartes").hidden=true;$("note").textContent="";msg("");bloque(true);
+ $("principal").disabled=!dossier;montrerArbre()}
+function travail(titre,attente){const t0=Date.now();prog=null;$("cartes").hidden=true;$("note").textContent="";msg("");bloque(true);
  heros({icone:"roue",titre,sous:"Rien n'est modifié pendant ce temps."});clearInterval(chrono);
- chrono=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);if(s>=4)$("sous").textContent=(attente||(drive?"Un grand drive peut prendre quelques minutes…":"Un gros dossier peut prendre quelques minutes…"))+" "+s+" s"},1000)}
-async function appel(a){const post=x=>fetch("/"+x,{method:"POST",headers:{"X-Jeton":J,"Content-Type":"application/json"},body:JSON.stringify({dossier,drive})}).then(r=>r.json());
- try{let d=await post(a);while(d.en_cours){await new Promise(f=>setTimeout(f,800));d=await post("suivre")}return d}
+ chrono=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);if(prog&&prog.total)$("sous").textContent=prog.fait+" sur "+prog.total+" faits… "+s+" s";else if(s>=4)$("sous").textContent=(attente||(drive?"Un grand drive peut prendre quelques minutes…":"Un gros dossier peut prendre quelques minutes…"))+" "+s+" s"},1000)}
+async function appel(a,plus){const post=x=>fetch("/"+x,{method:"POST",headers:{"X-Jeton":J,"Content-Type":"application/json"},body:JSON.stringify({dossier,drive,...plus})}).then(r=>r.json());
+ try{let d=await post(a);while(d.en_cours){if(d.progres)prog=d.progres;await new Promise(f=>setTimeout(f,800));d=await post("suivre")}return d}
  catch(e){return{texte:"SaveSpace Drive ne répond plus. Ferme la fenêtre et relance-le.",erreur:true}}
  finally{clearInterval(chrono);bloque(false)}}
 function lignes(el,ls){el.replaceChildren(...ls.map(([a,b,cl])=>{const d=document.createElement("div"),x=document.createElement("span"),y=document.createElement("span");
@@ -350,7 +362,7 @@ function groupes(gs,total){const ls=gs.flatMap(g=>[["On garde : "+g.garde,g.tail
 function resultat(r){vue=()=>resultat(r);dernier=r;const D=r.drive,esp=r.espace?" "+r.espace+".":"";
  if(r.recuperables_octets>0)heros({chiffre:r.recuperables,titre:"récupérables",sous:D?"en mettant les doublons de "+D+" à la corbeille."+esp:"en rangeant les doublons de « "+nom+" » ("+r.total+" analysés).",bouton:D?"Mettre les doublons à la corbeille…":"Ranger les doublons…",action:preparer,lien:"Analyser à nouveau",actionLien:analyser});
  else heros({icone:"coche",titre:"Aucun doublon ici",sous:(D?D+" ("+r.total+") est déjà en ordre."+esp:"« "+nom+" » ("+r.total+") est déjà en ordre.")+" Jette un œil aux plus gros fichiers ci-dessous.",bouton:"Analyser à nouveau",action:analyser});
- $("cartes").hidden=false;
+ $("cartes").hidden=false;montrerArbre();
  carte("c-doublons",r.groupes?r.recuperables:"Aucun",r.groupes?n(r.groupes,"groupe")+" de fichiers identiques. On garde un exemplaire de chacun, le reste "+(D?"va dans la corbeille de "+D+".":"est mis de côté."):"Pas de fichier en double ici.",groupes(r.doublons,r.groupes));
  carte("c-gros",r.gros.length?r.gros[0][1]:"Aucun",r.gros.length?"pour le plus gros. Voici les plus lourds, à trier toi-même : on n'y touche pas.":"Ce dossier est vide.",r.gros);
  $("t-caches").textContent=D?"Corbeille et autres":"Caches et journaux";
@@ -377,6 +389,41 @@ async function restaurer(){if(!dossier&&!drive)return msg("Choisis d'abord un do
  if(d.erreur){(avant||accueil)();return msg(d.texte,"erreur")}vue=accueil;$("cartes").hidden=true;
  if(drive)return heros({icone:"logo",titre:"Récupérer depuis la corbeille",sous:d.texte,bouton:"Analyser",action:analyser,ext:d.lien,extTexte:d.lien_texte});
  heros({icone:"coche",titre:"Tout est revenu",sous:d.texte.replace(/^C'est fait : /,""),bouton:"Analyser à nouveau",action:analyser})}
+function el(tag,cl,txt){const e=document.createElement(tag);if(cl)e.className=cl;if(txt!=null)e.textContent=txt;return e}
+function mini(txt,f){const b=el("button","mini",txt);b.onclick=f;return b}
+function fermer2(){$("voile2").hidden=true}
+async function proposer(){travail("Lecture de la liste des fichiers…","Rien n'est ouvert ni téléchargé : seulement la liste.");const d=await appel("rangement_plan");vue();
+ if(d.erreur)return msg(d.texte,"erreur");if(d.interrompu)return interrompu(d.interrompu);montrer(d)}
+function arbreR(a){const tops=a.arbre.map(t=>t.chemin);
+ $("r-arbre").replaceChildren(...a.arbre.flatMap(t=>{const l=el("div"),nm=el("span","nomd",t.chemin+(t.existe?" (déjà là)":"")),o=el("span","outils");
+  l.append(nm,el("span","t",n(t.n,"fichier")),o);
+  if(!t.existe){o.append(mini("Renommer",()=>renommer(nm,t.chemin)));
+   if(tops.length>1){const s=el("select","mini");s.append(new Option("Fusionner dans…",""),...tops.filter(x=>x!==t.chemin).map(x=>new Option(x,x)));s.onchange=()=>s.value&&modif("fusionner",t.chemin,s.value);o.append(s)}}
+  o.append(mini("Exclure",()=>modif("exclure",t.chemin)));
+  return[l,...t.sous.map(s=>{const r=el("div","sousd");r.append(el("span","",s.nom+(s.existe?" (déjà là)":"")),el("span","t",n(s.n,"fichier")),mini("Exclure",()=>modif("exclure",s.chemin)));return r})]}))}
+function renommer(span,chemin){const i=el("input","mini");i.value=chemin;span.replaceWith(i);i.focus();i.select();
+ i.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();modif("renommer",chemin,i.value)}if(e.key==="Escape"){e.stopPropagation();arbreR(rplan)}}}
+async function modif(op,chemin,v){const d=await appel("rangement_modifier",{op,chemin,nom:v||""});if(d.erreur)return $("r-note").textContent=d.texte;montrer(d)}
+function montrer(d){const a=rplan=d.apercu;encore=false;msg("");
+ $("r-titre").textContent=a.nombre?"Ranger « "+nom+" » en "+n(a.dossiers_haut,"dossier")+" ?":"« "+nom+" » est déjà rangé";$("r-non").textContent="Annuler";
+ $("r-texte").textContent=a.nombre?n(a.nombre,"déplacement")+" ("+n(a.fichiers,"fichier")+" en tout). Rien n'est effacé ni téléchargé : on déplace seulement. Après : "+n(a.dossiers_haut,"dossier")+" en haut, "+(a.vrac?n(a.vrac,"fichier")+" en vrac":"aucun fichier en vrac")+". Tu peux renommer, fusionner ou exclure un dossier ci-dessous."+(lieu==="icloud"?" C'est iCloud Drive : le rangement se verra aussi sur ton iPhone et tes autres appareils.":""):"Rien à déplacer ici.";
+ arbreR(a);lignes($("r-ex"),a.exemples.map(([s,c])=>[s+"  →  "+c,""]));$("r-det").hidden=!a.exemples.length;
+ $("r-note").textContent=a.total_laisses?"Laissés à leur place, on n'y touche pas : "+a.laisses.slice(0,8).map(([c,r])=>c+" ("+r+")").join(", ")+(a.total_laisses>8?"… et "+(a.total_laisses-8)+" autres.":"."):"";
+ $("r-oui").hidden=!a.nombre;$("r-oui").textContent="Oui, ranger";ouiR=go;
+ $("r-defaire").hidden=!d.annulable;$("r-defaire").textContent="Annuler le dernier rangement";$("voile2").hidden=false;$("r-non").focus()}
+function interrompu(i){const fin=i.phase==="interrompu";$("r-arbre").replaceChildren();$("r-det").hidden=true;$("r-note").textContent="";
+ $("r-titre").textContent=fin?"Le dernier rangement s'est arrêté au milieu":"L'annulation s'est arrêtée au milieu";
+ $("r-texte").textContent=fin?i.faits+" déplacements sur "+i.total+" étaient faits avant l'arrêt. Tu peux finir le rangement, ou tout remettre comme avant.":"Clique pour finir de tout remettre comme avant.";
+ $("r-oui").hidden=false;$("r-oui").textContent=fin?"Finir le rangement":"Finir l'annulation";ouiR=fin?reprendre:defaire;
+ $("r-defaire").hidden=!fin;$("r-defaire").textContent="Tout remettre comme avant";$("r-non").textContent="Plus tard";$("voile2").hidden=false}
+function range(d){if(d.erreur){(vue||accueil)();return msg(d.texte,"erreur")}vue=()=>{};$("cartes").hidden=true;
+ heros({icone:"coche",titre:"C'est rangé",sous:d.texte.replace(/^C'est fait : /,""),bouton:"Analyser",action:analyser,lien:"Annuler ce rangement",actionLien:defaire})}
+async function go(){const a=rplan;if(a.nombre>a.max&&!encore){encore=true;$("r-oui").textContent="Oui, je confirme les "+a.nombre+" déplacements";
+  $("r-texte").textContent="C'est beaucoup : "+n(a.nombre,"déplacement")+" d'un coup. Conseil : essaie d'abord sur un plus petit dossier. Pour continuer quand même, clique encore une fois.";return}
+ fermer2();travail("Rangement en cours…","Les fichiers sont déplacés un par un.");range(await appel("rangement_go",{confirme_gros:encore}))}
+async function reprendre(){fermer2();travail("Rangement en cours…","Les fichiers sont déplacés un par un.");range(await appel("rangement_reprendre"))}
+async function defaire(){fermer2();travail("Remise en place…","Chaque fichier revient à sa place d'avant.");const d=await appel("rangement_annuler");
+ if(d.erreur){accueil();return msg(d.texte,"erreur")}vue=accueil;$("cartes").hidden=true;heros({icone:"coche",titre:"Tout est revenu",sous:d.texte,bouton:"Analyser",action:analyser})}
 function choisir(c){c=(c||"").trim();if(!c)return;dossier=c;const raccourci=document.querySelector('.puce[data-c="'+CSS.escape(c)+'"]');
  nom=raccourci?raccourci.textContent:c.split(/[\\/]/).filter(Boolean).pop()||c;$("chemin").textContent=raccourci?"":c;
  document.querySelectorAll("#dossiers .puce").forEach(b=>b.classList.toggle("choisie",b===raccourci||(b.id==="autre"&&!raccourci)));msg("");accueil()}
@@ -391,7 +438,8 @@ $("autre").onclick=async()=>{if(natif){const c=await window.pywebview.api.choisi
 $("saisie").onchange=()=>choisir($("saisie").value);
 $("principal").onclick=()=>suite&&suite();$("lien").onclick=()=>suiteLien&&suiteLien();$("restaurer").onclick=restaurer;
 $("f-non").onclick=()=>{fermer();msg("Rien n'a bougé.","info")};$("f-oui").onclick=ranger;
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("voile").hidden)$("f-non").click()});
+$("arbre").onclick=proposer;$("r-non").onclick=()=>{fermer2();msg("Rien n'a bougé.","info")};$("r-oui").onclick=()=>ouiR&&ouiR();$("r-defaire").onclick=defaire;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("voile").hidden)$("f-non").click();if(e.key==="Escape"&&!$("voile2").hidden)$("r-non").click()});
 $("quitter").onclick=async()=>{await fetch("/quitter",{method:"POST",headers:{"X-Jeton":J}}).catch(()=>0);document.body.replaceChildren();document.body.append("SaveSpace Drive est fermé. Tu peux fermer cet onglet.")};
 window.addEventListener("pywebviewready",()=>{natif=true;$("quitter").hidden=true});
 choisirLieu("mac");
@@ -411,7 +459,7 @@ class Serveur(ThreadingHTTPServer):
 def creer_serveur():
     s = Serveur(("127.0.0.1", 0), Ecran)  # 127.0.0.1 seulement, port libre choisi par le système
     s.daemon_threads, s.timeout = True, 0.5
-    s.jeton, s.plans, s.fini, s.fil, s.rep = secrets.token_urlsafe(16), {}, False, None, None
+    s.jeton, s.plans, s.fini, s.fil, s.rep, s.progres = secrets.token_urlsafe(16), {}, False, None, None, None
     s.hote = f"127.0.0.1:{s.server_port}"
     return s, f"http://{s.hote}/?t={s.jeton}"
 

@@ -33,15 +33,23 @@ dans les Issues.
    `quarantaine`.
 4. **Annuler / restaurer** remet tout en place, à l'identique (chaque fichier vérifié par empreinte).
 
-**Où chercher ?** Ce Mac, **iCloud Drive**, **Google Drive**, **OneDrive** ou **Dropbox**.
+**Où chercher ?** Ce Mac, **iCloud Drive**, **Google Drive**, **OneDrive**, **Dropbox** ou **pCloud**.
 - iCloud Drive : comme un dossier du Mac. Attention : mettre un fichier de côté le retire aussi de ton
   iPhone et de tes autres appareils (il revient avec « Annuler / restaurer »).
-- Google Drive, OneDrive, Dropbox : **Connecter** ouvre la page de connexion du service dans ton navigateur
+- Google Drive, OneDrive, Dropbox, pCloud : **Connecter** ouvre la page de connexion du service dans ton navigateur
   (l'app ne voit jamais ton mot de passe). L'analyse lit seulement la liste des fichiers et les empreintes
   calculées par le service : **rien n'est téléchargé**. Les doublons vont dans la **corbeille du service**
   (récupérables 30 jours sur son site), jamais effacés pour de bon. Le moteur gratuit rclone est inclus.
 
 ![Google Drive : place récupérable](docs/captures/10_drive_resultat.png)
+
+**Ranger en dossiers** (Mac, iCloud Drive, Google Drive, OneDrive, Dropbox, pCloud) : l'app lit seulement la liste des
+fichiers et propose une dizaine de dossiers clairs (administratif, factures, documents, photos, vidéos… avec des
+sous-dossiers par thème ou par année). Tu vois l'arbre avant, tu peux renommer, fusionner ou exclure un dossier ; rien ne
+bouge sans « Oui, ranger ». Rien n'est effacé ni téléchargé, jamais un fichier écrasé ; « Annuler ce rangement » remet
+tout comme avant. Méthode : `docs/RANGEMENT_METHODE.md`.
+
+![Ranger en dossiers : l'aperçu](docs/captures/15_ranger_apercu.png)
 
 ## Limites, en clair
 - La quarantaine reste sur le même disque : la place n'est libérée que quand tu la vides toi-même.
@@ -49,7 +57,7 @@ dans les Issues.
   ouverts, donc jamais téléchargés ; ils sont comptés à part. Seuls les fichiers présents sur le Mac sont examinés.
 - Les gros fichiers et les caches sont montrés, jamais supprimés : à toi de décider.
 - Le dossier personnel entier et la racine du disque sont refusés (trop risqué en un clic).
-- Google Drive, OneDrive, Dropbox : essayés seulement avec un faux service et un disque local (tests) ;
+- Google Drive, OneDrive, Dropbox, pCloud : essayés seulement avec un faux service et un disque local (tests) ;
   **jamais encore sur un vrai compte**. « Annuler » ne peut pas les remettre en place : on te donne le lien de
   la corbeille du service, c'est là que tu restaures. Les Google Docs/Sheets n'ont pas d'empreinte : jamais
   comptés comme doublons. Deux fichiers au même nom au même endroit (Drive le permet) ne sont jamais proposés.

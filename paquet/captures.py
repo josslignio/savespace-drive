@@ -1,6 +1,6 @@
 """Captures d'écran de la fenêtre (outil de développement, Mac seulement, jamais livré dans l'app).
 Tout se passe dans une MAISON DE DÉMO synthétique (HOME remplacé) : aucun fichier réel n'est lu ni déplacé.
-Usage : python paquet/captures.py DOSSIER_DEMO DOSSIER_CAPTURES"""
+Usage : python paquet/captures.py DOSSIER_DEMO DOSSIER_CAPTURES   (CAPTURES=rangement : seulement les écrans « Ranger en dossiers »)"""
 import json, os, subprocess, sys, time
 from pathlib import Path
 
@@ -21,6 +21,11 @@ NUAGE = {ICLOUD + "Anciennes vidéos/Vacances 2019.mov": 900, ICLOUD + "Ancienne
 DRIVE = [("Photos 2023/IMG_0412.JPG", 4.2, "a"), ("Sauvegarde iPhone/IMG_0412.JPG", 4.2, "a"), ("Vidéos/Mariage Julie.mp4", 820, "b"),
          ("Vidéos/Mariage Julie (1).mp4", 820, "b"), ("Contrat location.pdf", 1.1, "c"), ("Documents/Copie de Contrat location.pdf", 1.1, "c"),
          ("Archives/Ancien Mac.zip", 2300, "d"), ("Musique/Concert.m4a", 18, "e")]  # faux Google Drive : (chemin, Mo, empreinte)
+DRIVE_EN_VRAC = DRIVE + [(c, 0.5, None) for c in ("Devis peinture salon.pdf", "Facture box internet juin.pdf", "Avis d'imposition 2024.pdf",
+                         "IMG_2210.HEIC", "IMG_2211.HEIC", "Capture d'écran 2025-02-11.png", "Recette crêpes.docx", "Budget vacances.xlsx",
+                         "Présentation club.pptx", "Logo association.svg", "Mutuelle attestation.pdf", "Vidéo anniversaire Léa.mp4",
+                         "Google Photos/IMG_0001.jpg", "Sauvegarde WhatsApp/msgstore.db")]
+RANGEMENT_SEUL = os.environ.get("CAPTURES") == "rangement"
 
 
 def demo():
@@ -96,11 +101,46 @@ def apparence(nom):
     time.sleep(1)
 
 
+def captures_rangement(f, suffixe):
+    """« Ranger en dossiers » : aperçu, en cours, fait, annulé, coupure ; puis un faux Google Drive en vrac."""
+    f.evaluate_js("choisirLieu('mac');choisir(document.querySelector('.puce[data-c]').dataset.c)")
+    photo(f"14_ranger_accueil{suffixe}.png")
+    f.evaluate_js("proposer()")
+    attendre(f, "!document.getElementById('voile2').hidden")
+    photo(f"15_ranger_apercu{suffixe}.png")
+    f.evaluate_js("document.getElementById('r-det').open=true;document.getElementById('r-ex').scrollIntoView()")
+    photo(f"16_ranger_exemples{suffixe}.png")
+    f.evaluate_js("document.getElementById('r-oui').click()")
+    attendre(f, "document.getElementById('titre').textContent==\"C'est rangé\"")
+    photo(f"17_ranger_fait{suffixe}.png")
+    f.evaluate_js("defaire()")
+    attendre(f, "document.getElementById('titre').textContent=='Tout est revenu'")
+    photo(f"18_ranger_annule{suffixe}.png")
+    f.evaluate_js("travail('Rangement en cours…','');prog={fait:37,total:120}")
+    time.sleep(1.5)
+    photo(f"19_ranger_en_cours{suffixe}.png")
+    f.evaluate_js("accueil();interrompu({phase:'interrompu',faits:37,total:120})")
+    photo(f"20_ranger_coupure{suffixe}.png")
+    f.evaluate_js("fermer2()")
+    (FAUX / "rclone.json").write_text(json.dumps({"fichiers": [{"p": c, "t": int(mo * 1_000_000), **({"h": h} if h else {})}
+                                                               for c, mo, h in DRIVE_EN_VRAC]}))
+    drives.conf().parent.mkdir(parents=True, exist_ok=True)
+    drives.conf().write_text("[gdrive]\ntype = drive\n")
+    f.evaluate_js("E.gdrive.ok=true;E.rclone=true;choisirLieu('gdrive')")
+    f.evaluate_js("proposer()")
+    attendre(f, "!document.getElementById('voile2').hidden")
+    photo(f"21_ranger_drive_apercu{suffixe}.png")
+    f.evaluate_js("fermer2();choisirLieu('mac')")
+
+
 def pilote(f, s):
     try:
         attendre(f, "typeof analyser==='function' && !!dossier")
         for theme, suffixe in (("NSAppearanceNameAqua", ""), ("NSAppearanceNameDarkAqua", "_sombre")):
             apparence(theme)
+            captures_rangement(f, suffixe)
+            if RANGEMENT_SEUL:
+                continue
             f.evaluate_js("choisir(document.querySelector('.puce[data-c]').dataset.c)")
             photo(f"1_accueil{suffixe}.png")
             f.evaluate_js("travail('Analyse de « '+nom+' »…')")

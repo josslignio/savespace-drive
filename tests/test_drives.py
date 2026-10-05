@@ -179,7 +179,8 @@ def test_rien_ne_part_sans_le_oui(faux, ecran):
 
 
 @pytest.mark.parametrize("cle, type_, drapeau", [("gdrive", "drive", "--drive-use-trash=true"),
-                                                  ("onedrive", "onedrive", "--onedrive-hard-delete=false"), ("dropbox", "dropbox", None)])
+                                                  ("onedrive", "onedrive", "--onedrive-hard-delete=false"), ("dropbox", "dropbox", None),
+                                                  ("pcloud", "pcloud", None)])
 def test_corbeille_seulement(faux, ecran, monkeypatch, cle, type_, drapeau):
     s, _ = ecran
     monkeypatch.setenv("RCLONE_DRIVE_USE_TRASH", "false")  # un réglage du dehors ne doit rien changer

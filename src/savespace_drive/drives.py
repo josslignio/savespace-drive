@@ -1,4 +1,4 @@
-"""Drives en ligne (Google Drive, OneDrive, Dropbox) par rclone (MIT) ; le binaire officiel est inclus dans l'app.
+"""Drives en ligne (Google Drive, OneDrive, Dropbox, pCloud) par rclone (MIT) ; le binaire officiel est inclus dans l'app.
 Rien n'est téléchargé : l'analyse lit la liste des fichiers et les empreintes que le SERVICE calcule lui-même
 (rclone lsjson --hash-type) et l'espace (rclone about). Ranger = la corbeille du service, jamais un effacement
 définitif : un compte dont le type n'a pas de corbeille sûre est refusé avant tout appel. La configuration (jeton de
@@ -13,9 +13,10 @@ DRIVES = {
     "gdrive": ("Google Drive", "drive", "md5", ["--drive-use-trash=true"], "https://drive.google.com/drive/trash"),
     "onedrive": ("OneDrive", "onedrive", "quickxor", ["--onedrive-hard-delete=false"], "https://onedrive.live.com/?qt=recyclebin"),
     "dropbox": ("Dropbox", "dropbox", "dropbox", [], "https://www.dropbox.com/deleted_files"),  # rclone n'a pas d'effacement définitif Dropbox
+    "pcloud": ("pCloud", "pcloud", "sha1", [], "https://my.pcloud.com/#page=trash"),  # pCloud : tout effacement va à la corbeille ; SHA1 en Europe comme aux USA
 }
 REVOQUER = {"gdrive": "https://myaccount.google.com/permissions", "onedrive": "https://account.live.com/consent/Manage",
-            "dropbox": "https://www.dropbox.com/account/connected_apps"}  # où retirer l'accès donné à rclone
+            "dropbox": "https://www.dropbox.com/account/connected_apps", "pcloud": "https://my.pcloud.com/#page=settings"}  # où retirer l'accès donné à rclone
 CONNEXION = {"gdrive": ["scope", "drive"]}  # Drive : accès complet, sinon impossible de mettre à la corbeille
 GROS = 10
 EN_COURS = []  # rclone lancés et pas finis : tués à la fermeture de l'app (sinon une connexion restée ouverte bloque la suivante)
